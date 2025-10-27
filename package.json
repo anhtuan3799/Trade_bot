@@ -1,0 +1,23 @@
+{
+  "name": "mexc-futures-bot-real",
+  "version": "1.0.0",
+  "description": "MEXC Futures Trading Bot with Real Orders",
+  "main": "dist/bot.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/bot.js",
+    "dev": "ts-node src/bot.ts"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "dotenv": "^16.0.0",
+    "https-proxy-agent": "^7.0.6",
+    "mexc-futures-sdk": "^1.5.1"
+  },
+  "devDependencies": {
+    "@types/axios": "^0.9.36",
+    "@types/node": "^18.19.130",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.0.0"
+  }
+}
