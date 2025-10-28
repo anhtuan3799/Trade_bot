@@ -26,8 +26,8 @@ interface Order {
 }
 
 const STRATEGY_CONFIG = {
-  initialPositionPercent: 0.07,
-  maxTotalPositionPercent: 0.21,
+  initialPositionPercent: 0.20,
+  maxTotalPositionPercent: 0.60,
   takeProfitLevels: [
     { priceChangePercent: 2.0, closeRatio: 0.4 },
     { priceChangePercent: 4.0, closeRatio: 0.4 },
@@ -37,10 +37,10 @@ const STRATEGY_CONFIG = {
     { priceChangePercent: 2.5, closeRatio: 0.5 },
     { priceChangePercent: 4.0, closeRatio: 0.5 }
   ],
-  minDailyVolatility: 3.0,
-  minVolume24h: 5000000,
-  trendStrengthThreshold: 0.6,
-  volumeSpikeThreshold: 1.2,
+  minDailyVolatility: 5.0,
+  minVolume24h: 10000000,
+  trendStrengthThreshold: 0.8,
+  volumeSpikeThreshold: 1.5,
   maxActivePositions: 3,
   maxTrackingCoins: 10,
   minAccountBalancePercent: 0.15,
@@ -54,8 +54,8 @@ const STRATEGY_CONFIG = {
     marketStructureBreak: true
   },
   dcaLevels: [
-    { priceChangePercent: 1.0, addRatio: 0.07, condition: 'MICRO_PULLBACK' },
-    { priceChangePercent: 2.5, addRatio: 0.07, condition: 'STRONG_RESISTANCE' }
+    { priceChangePercent: 1.0, addRatio: 0.2, condition: 'MICRO_PULLBACK' },
+    { priceChangePercent: 2.5, addRatio: 0.2, condition: 'STRONG_RESISTANCE' }
   ],
   maxDcaTimes: 2,
   dcaConditions: {
@@ -72,20 +72,20 @@ const STRATEGY_CONFIG = {
   },
   fakePumpDetection: {
     enabled: true,
-    minPumpPercent: 4,
-    maxDropFromPump: 8,
-    volumeDivergenceThreshold: 1.2,
+    minPumpPercent: 8,
+    volumeDivergenceThreshold: 1.2, // Đảo ngược: volume phải CAO hơn
     timeFrame: 4,
     momentumDivergence: true,
     emaRejection: true,
     maxRetracement: 0.382,
-    minPumpCandles: 3,
-    requireUptrend: false
+    minPumpCandles: 4,
+    maxDropFromPump: 8, // Tăng từ 6% lên 8%
+    requireUptrend: false 
   },
   strongDowntrend: {
-    minTrendStrength: 0.75,
-    minVolumeSpike: 1.5,
-    accelerationThreshold: -0.001,
+    minTrendStrength: 0.85,
+    minVolumeSpike: 1.8,
+    accelerationThreshold: -0.002,
     emaAlignment: true
   },
   trailingStopLoss: {
@@ -96,15 +96,15 @@ const STRATEGY_CONFIG = {
   },
   positiveDCA: {
     enabled: true,
-    minPullbackPercent: 0.3,
-    maxPullbackPercent: 5.0,
+    minPullbackPercent: 0.5,
+    maxPullbackPercent: 4.0,
     volumeDropThreshold: 0.8,
-    momentumThreshold: 0.03,
+    momentumThreshold: 0.02,
     emaResistance: true,
     fibonacciRetracement: true,
     pullbackDCA: {
       enabled: true,
-      minTrendStrength: 0.6,
+      minTrendStrength: 0.7,
       maxConsecutiveDCA: 2,
       timeBetweenDCA: 180000,
       volumeMultiplier: 1.0,
@@ -113,47 +113,47 @@ const STRATEGY_CONFIG = {
     }
   },
   trendStrengthCheck: {
-    minTrendStrength: 0.5,
+    minTrendStrength: 0.6,
     emaAlignment: true,
-    maxMomentum: -0.003,
-    minVolumeSpike: 1.1,
-    trendAccelerationThreshold: -0.0005,
+    maxMomentum: -0.005,
+    minVolumeSpike: 1.2,
+    trendAccelerationThreshold: -0.001,
     reversalDetection: {
       momentumDivergence: true,
       pricePattern: true,
       volumeConfirmation: true,
-      minReversalStrength: 0.6
+      minReversalStrength: 0.7
     }
   },
   entryFilters: {
-    max24hDropPercent: 20,
-    maxRecentDropPercent: 15,
-    minDistanceToSupportPercent: 1,
-    maxDowntrendDurationHours: 72
+    max24hDropPercent: 15, // Tăng từ 12% lên 15%
+    maxRecentDropPercent: 10, // Tăng từ 8% lên 10%
+    minDistanceToSupportPercent: 2,
+    maxDowntrendDurationHours: 48
   }
 };
 
 const LOWCAP_KILL_LONG_CONFIG = {
   enabled: true,
-  minPumpPercent: 8,
-  maxPumpPercent: 100,
-  volumeSpikeThreshold: 2.0,
-  killLongDropPercent: 2.0,
-  momentumOverbought: 0.03,
-  maxMarketCapRank: 500,
-  minLiquidity: 300000,
-  positionSizePercent: 0.07,
-  takeProfit: 10.0,
-  stopLoss: 5.0,
+  minPumpPercent: 15,
+  maxPumpPercent: 80,
+  volumeSpikeThreshold: 2.5,
+  killLongDropPercent: 3.0,
+  momentumOverbought: 0.05,
+  maxMarketCapRank: 300,
+  minLiquidity: 500000,
+  positionSizePercent: 0.20,
+  takeProfit: 12.0,
+  stopLoss: 6.0,
   maxPositions: 2,
   timeframe: "Min5",
-  lookbackCandles: 20,
-  rejectionCandleThreshold: 1.5,
-  emaRejectionThreshold: 0.03,
-  minATRPercent: 1.5,
+  lookbackCandles: 24,
+  rejectionCandleThreshold: 1.8,
+  emaRejectionThreshold: 0.02,
+  minATRPercent: 2.0,
   maxPositionAge: 3600000,
-  maxDropFromPump: 20,
-  minVolumeRetention: 0.6
+  maxDropFromPump: 15,
+  minVolumeRetention: 0.7
 };
 
 interface MexcContract {
@@ -379,8 +379,8 @@ class DualModeStrategyBot {
     console.log('💰 POSITION SIZE: 7% account | DCA: 2x 7%');
     console.log('📈 TOTAL EXPOSURE: 21% account (7% + 14% DCA)');
     console.log('🛡️ ENTRY FILTERS: Active - Avoid large drops, long downtrends');
-    console.log('🎯 IMPROVED FAKE PUMP: 3+ candles, <8% drop, NO uptrend required');
-    console.log('🎯 IMPROVED LOWCAP: <20% drop, >60% volume retention');
+    console.log('🎯 IMPROVED FAKE PUMP: 4+ candles, <8% drop, NO UPTREND required');
+    console.log('🎯 IMPROVED LOWCAP: <15% drop, >70% volume retention');
   }
 
   private async fetchBinanceSymbols(): Promise<Set<string>> {
@@ -661,156 +661,123 @@ class DualModeStrategyBot {
     return { shouldEnter: true, reason: 'PASSED_ALL_FILTERS' };
   }
 
-  private detectPumpSignals(
+  private detectLowCapKillLong(
     candles: SimpleCandle[],
     currentPrice: number,
     volume24h: number,
     marketMomentum: number,
     ema: number,
     atr: number,
-    marketCapRank: number,
-    trendDirection: string
-  ): { 
-    hasFakePump: boolean; 
-    fakePumpStrength: number; 
-    fakePumpReason: string;
-    hasKillLong: boolean;
-    killLongStrength: number; 
-    killLongReason: string;
-    pumpPercent: number;
-    combinedSignal: boolean;
-    signalType: string;
-  } {
-    if (candles.length < 10) {
-      return {
-        hasFakePump: false, fakePumpStrength: 0, fakePumpReason: 'INSUFFICIENT_DATA',
-        hasKillLong: false, killLongStrength: 0, killLongReason: 'INSUFFICIENT_DATA',
-        pumpPercent: 0, combinedSignal: false, signalType: 'NO_SIGNAL'
-      };
+    marketCapRank: number
+  ): { hasKillLongSignal: boolean; killLongStrength: number; reason: string; pumpPercent: number } {
+    
+    if (candles.length < LOWCAP_KILL_LONG_CONFIG.lookbackCandles) {
+      return { hasKillLongSignal: false, killLongStrength: 0, reason: 'INSUFFICIENT_DATA', pumpPercent: 0 };
     }
 
-    const lookbackPeriod = Math.max(STRATEGY_CONFIG.fakePumpDetection.minPumpCandles, LOWCAP_KILL_LONG_CONFIG.lookbackCandles);
-    const pumpCandles = candles.slice(-lookbackPeriod);
-    
-    const pumpHigh = Math.max(...pumpCandles.map(c => c.high));
-    const pumpLow = Math.min(...pumpCandles.map(c => c.low));
-    const pumpPercent = ((pumpHigh - pumpLow) / pumpLow) * 100;
-    const dropFromHigh = ((pumpHigh - currentPrice) / pumpHigh) * 100;
+    if (marketCapRank > LOWCAP_KILL_LONG_CONFIG.maxMarketCapRank) {
+      return { hasKillLongSignal: false, killLongStrength: 0, reason: 'NOT_LOWCAP', pumpPercent: 0 };
+    }
 
-    const recentVolume = pumpCandles.slice(-4).reduce((sum, c) => sum + c.volume, 0) / 4;
-    const previousVolume = pumpCandles.slice(-8, -4).reduce((sum, c) => sum + c.volume, 0) / 4;
+    if (volume24h < LOWCAP_KILL_LONG_CONFIG.minLiquidity) {
+      return { hasKillLongSignal: false, killLongStrength: 0, reason: 'LOW_LIQUIDITY', pumpPercent: 0 };
+    }
+
+    const recentCandles = candles.slice(-LOWCAP_KILL_LONG_CONFIG.lookbackCandles);
+    
+    const pumpHigh = Math.max(...recentCandles.map(c => c.high));
+    const pumpLow = Math.min(...recentCandles.map(c => c.low));
+    
+    const pumpPercent = ((pumpHigh - pumpLow) / pumpLow) * 100;
+    
+    if (pumpPercent < LOWCAP_KILL_LONG_CONFIG.minPumpPercent || 
+        pumpPercent > LOWCAP_KILL_LONG_CONFIG.maxPumpPercent) {
+      return { hasKillLongSignal: false, killLongStrength: 0, reason: `PUMP_PERCENT_${pumpPercent.toFixed(1)}`, pumpPercent };
+    }
+
+    const dropFromHigh = ((pumpHigh - currentPrice) / pumpHigh) * 100;
+    if (dropFromHigh > LOWCAP_KILL_LONG_CONFIG.maxDropFromPump) {
+      return { hasKillLongSignal: false, killLongStrength: 0, reason: `EXCESSIVE_DROP_${dropFromHigh.toFixed(1)}%`, pumpPercent };
+    }
+
+    const recentVolume = recentCandles.slice(-4).reduce((sum, c) => sum + c.volume, 0) / 4;
+    const previousVolume = recentCandles.slice(-8, -4).reduce((sum, c) => sum + c.volume, 0) / 4;
     const volumeSpike = previousVolume > 0 ? recentVolume / previousVolume : 1;
+    
     const volumeRetention = recentVolume / previousVolume;
+    if (volumeRetention < LOWCAP_KILL_LONG_CONFIG.minVolumeRetention) {
+      return { hasKillLongSignal: false, killLongStrength: 0, reason: `LOW_VOLUME_RETENTION_${(volumeRetention * 100).toFixed(1)}%`, pumpPercent };
+    }
+
+    if (volumeSpike < LOWCAP_KILL_LONG_CONFIG.volumeSpikeThreshold) {
+      return { hasKillLongSignal: false, killLongStrength: 0, reason: `LOW_VOLUME_SPIKE_${volumeSpike.toFixed(1)}`, pumpPercent };
+    }
+
+    if (marketMomentum < LOWCAP_KILL_LONG_CONFIG.momentumOverbought) {
+      return { hasKillLongSignal: false, killLongStrength: 0, reason: `MOMENTUM_NOT_OVERBOUGHT_${marketMomentum.toFixed(3)}`, pumpPercent };
+    }
+
+    if (dropFromHigh < LOWCAP_KILL_LONG_CONFIG.killLongDropPercent) {
+      return { hasKillLongSignal: false, killLongStrength: 0, reason: `INSUFFICIENT_DROP_${dropFromHigh.toFixed(1)}`, pumpPercent };
+    }
 
     const lastCandle = candles[candles.length - 1];
     const upperShadow = lastCandle.high - Math.max(lastCandle.open, lastCandle.close);
     const bodySize = Math.abs(lastCandle.close - lastCandle.open);
-    const isRejectionCandle = upperShadow > (bodySize * 1.2);
+    const isRejectionCandle = upperShadow > (bodySize * LOWCAP_KILL_LONG_CONFIG.rejectionCandleThreshold);
 
     const distanceToEMA = ema > 0 ? Math.abs(currentPrice - ema) / ema : 0;
-    const isEMARejection = distanceToEMA <= 0.03 && currentPrice < ema;
+    const isEMARejection = distanceToEMA <= LOWCAP_KILL_LONG_CONFIG.emaRejectionThreshold && currentPrice < ema;
 
-    let fakePumpScore = 0;
-    let fakePumpReasons: string[] = [];
+    const atrPercent = (atr / currentPrice) * 100;
+    const hasGoodVolatility = atrPercent >= LOWCAP_KILL_LONG_CONFIG.minATRPercent;
 
-    if (pumpPercent >= STRATEGY_CONFIG.fakePumpDetection.minPumpPercent) {
-      fakePumpScore += 25;
-      fakePumpReasons.push(`PUMP_${pumpPercent.toFixed(1)}%`);
+    let killLongScore = 0;
+    let reasons: string[] = [];
+
+    if (dropFromHigh >= 3.0 && dropFromHigh <= LOWCAP_KILL_LONG_CONFIG.maxDropFromPump) {
+      killLongScore += 25;
+      reasons.push(`PERFECT_DROP_${dropFromHigh.toFixed(1)}%`);
     }
 
-    if (dropFromHigh <= STRATEGY_CONFIG.fakePumpDetection.maxDropFromPump) {
-      fakePumpScore += 20;
-      fakePumpReasons.push(`DROP_${dropFromHigh.toFixed(1)}%`);
+    if (volumeSpike >= LOWCAP_KILL_LONG_CONFIG.volumeSpikeThreshold) {
+      killLongScore += 20;
+      reasons.push(`VOLUME_SPIKE_${volumeSpike.toFixed(1)}`);
     }
 
-    if (volumeSpike > STRATEGY_CONFIG.fakePumpDetection.volumeDivergenceThreshold) {
-      fakePumpScore += 20;
-      fakePumpReasons.push(`VOLUME_SPIKE_${volumeSpike.toFixed(2)}`);
+    if (marketMomentum >= LOWCAP_KILL_LONG_CONFIG.momentumOverbought) {
+      killLongScore += 15;
+      reasons.push(`MOMENTUM_${marketMomentum.toFixed(3)}`);
     }
 
     if (isRejectionCandle) {
-      fakePumpScore += 15;
-      fakePumpReasons.push('REJECTION_CANDLE');
+      killLongScore += 15;
+      reasons.push('REJECTION_CANDLE');
     }
 
     if (isEMARejection) {
-      fakePumpScore += 15;
-      fakePumpReasons.push('EMA_REJECTION');
+      killLongScore += 15;
+      reasons.push('EMA_REJECTION');
     }
 
-    if (marketMomentum < 0.02) {
-      fakePumpScore += 10;
-      fakePumpReasons.push(`MOMENTUM_${marketMomentum.toFixed(3)}`);
+    if (hasGoodVolatility) {
+      killLongScore += 10;
+      reasons.push(`ATR_${atrPercent.toFixed(1)}%`);
     }
 
-    const hasFakePump = fakePumpScore >= 50;
-    const fakePumpStrength = Math.min(fakePumpScore / 100, 1);
-
-    let killLongScore = 0;
-    let killLongReasons: string[] = [];
-
-    const isLowCap = marketCapRank <= LOWCAP_KILL_LONG_CONFIG.maxMarketCapRank;
-    const hasEnoughLiquidity = volume24h >= LOWCAP_KILL_LONG_CONFIG.minLiquidity;
-
-    if (isLowCap && hasEnoughLiquidity) {
-      killLongScore += 20;
-      killLongReasons.push(`LOWCAP_RANK_${marketCapRank}`);
-
-      if (pumpPercent >= LOWCAP_KILL_LONG_CONFIG.minPumpPercent && 
-          pumpPercent <= LOWCAP_KILL_LONG_CONFIG.maxPumpPercent) {
-        killLongScore += 20;
-        killLongReasons.push(`PUMP_${pumpPercent.toFixed(1)}%`);
-      }
-
-      if (dropFromHigh >= LOWCAP_KILL_LONG_CONFIG.killLongDropPercent && 
-          dropFromHigh <= LOWCAP_KILL_LONG_CONFIG.maxDropFromPump) {
-        killLongScore += 20;
-        killLongReasons.push(`DROP_${dropFromHigh.toFixed(1)}%`);
-      }
-
-      if (volumeSpike >= LOWCAP_KILL_LONG_CONFIG.volumeSpikeThreshold) {
-        killLongScore += 15;
-        killLongReasons.push(`VOLUME_${volumeSpike.toFixed(2)}`);
-      }
-
-      if (marketMomentum >= LOWCAP_KILL_LONG_CONFIG.momentumOverbought) {
-        killLongScore += 10;
-        killLongReasons.push(`MOMENTUM_${marketMomentum.toFixed(3)}`);
-      }
-
-      if (isRejectionCandle) {
-        killLongScore += 10;
-        killLongReasons.push('REJECTION_CANDLE');
-      }
-
-      if (volumeRetention >= LOWCAP_KILL_LONG_CONFIG.minVolumeRetention) {
-        killLongScore += 5;
-        killLongReasons.push(`VOL_RETENTION_${(volumeRetention * 100).toFixed(1)}%`);
-      }
+    if (volumeRetention >= LOWCAP_KILL_LONG_CONFIG.minVolumeRetention) {
+      killLongScore += 10;
+      reasons.push(`GOOD_VOLUME_${(volumeRetention * 100).toFixed(1)}%`);
     }
 
-    const hasKillLong = killLongScore >= 60;
+    const hasKillLongSignal = killLongScore >= 60; // Giảm từ 70 xuống 60
     const killLongStrength = Math.min(killLongScore / 100, 1);
 
-    const combinedSignal = hasFakePump || hasKillLong;
-    let signalType = 'NO_SIGNAL';
-    
-    if (hasKillLong) {
-      signalType = `LOWCAP_KILL_LONG_${killLongReasons.join('_')}`;
-    } else if (hasFakePump) {
-      signalType = `FAKE_PUMP_${fakePumpReasons.join('_')}`;
-    }
-
     return {
-      hasFakePump,
-      fakePumpStrength,
-      fakePumpReason: fakePumpReasons.join(','),
-      hasKillLong,
+      hasKillLongSignal,
       killLongStrength,
-      killLongReason: killLongReasons.join(','),
-      pumpPercent,
-      combinedSignal,
-      signalType
+      reason: reasons.join(','),
+      pumpPercent
     };
   }
 
@@ -1012,6 +979,127 @@ class DualModeStrategyBot {
     }
 
     return volatilityScore + volumeScore + trendScore + additionalScore;
+  }
+
+  private detectPumpSignal(
+    candles: SimpleCandle[], 
+    currentPrice: number,
+    ema: number,
+    marketMomentum: number,
+    volume24h: number,
+    trendDirection: string,
+    marketCapRank: number
+  ): { isPumpSignal: boolean; pumpStrength: number; reason: string; pumpPercent: number; isLowCap: boolean } {
+    
+    if (candles.length < 24) {
+      return { isPumpSignal: false, pumpStrength: 0, reason: 'INSUFFICIENT_DATA', pumpPercent: 0, isLowCap: false };
+    }
+
+    // Gộp cả 2 điều kiện pump
+    const pumpCandles = candles.slice(-Math.max(
+      STRATEGY_CONFIG.fakePumpDetection.minPumpCandles,
+      LOWCAP_KILL_LONG_CONFIG.lookbackCandles
+    ));
+    
+    const pumpHigh = Math.max(...pumpCandles.map(c => c.high));
+    const pumpLow = Math.min(...pumpCandles.map(c => c.low));
+    
+    const pumpPercent = ((pumpHigh - pumpLow) / pumpLow) * 100;
+    
+    // Điều kiện pump percent kết hợp
+    const minPumpPercent = Math.min(STRATEGY_CONFIG.fakePumpDetection.minPumpPercent, LOWCAP_KILL_LONG_CONFIG.minPumpPercent);
+    const maxPumpPercent = Math.max(STRATEGY_CONFIG.fakePumpDetection.maxDropFromPump * 2, LOWCAP_KILL_LONG_CONFIG.maxPumpPercent);
+    
+    if (pumpPercent < minPumpPercent || pumpPercent > maxPumpPercent) {
+      return { isPumpSignal: false, pumpStrength: 0, reason: `PUMP_PERCENT_${pumpPercent.toFixed(1)}`, pumpPercent, isLowCap: false };
+    }
+
+    const dropFromHigh = ((pumpHigh - currentPrice) / pumpHigh) * 100;
+    const maxDrop = Math.max(STRATEGY_CONFIG.fakePumpDetection.maxDropFromPump, LOWCAP_KILL_LONG_CONFIG.maxDropFromPump);
+    
+    if (dropFromHigh > maxDrop) {
+      return { isPumpSignal: false, pumpStrength: 0, reason: `EXCESSIVE_DROP_${dropFromHigh.toFixed(1)}%`, pumpPercent, isLowCap: false };
+    }
+
+    // Volume logic đảo ngược - pump cần volume CAO hơn
+    const volumeDuringPump = pumpCandles.slice(-4).reduce((sum, c) => sum + c.volume, 0) / 4;
+    const volumeBeforePump = pumpCandles.slice(-8, -4).reduce((sum, c) => sum + c.volume, 0) / 4;
+    const volumeSpike = volumeBeforePump > 0 ? volumeDuringPump / volumeBeforePump : 1;
+    
+    // Điều kiện volume kết hợp - yêu cầu volume CAO
+    const minVolumeSpike = Math.min(STRATEGY_CONFIG.fakePumpDetection.volumeDivergenceThreshold, LOWCAP_KILL_LONG_CONFIG.volumeSpikeThreshold);
+    if (volumeSpike < minVolumeSpike) {
+      return { isPumpSignal: false, pumpStrength: 0, reason: `LOW_VOLUME_SPIKE_${volumeSpike.toFixed(1)}`, pumpPercent, isLowCap: false };
+    }
+
+    const isLowCap = marketCapRank > LOWCAP_KILL_LONG_CONFIG.maxMarketCapRank;
+    
+    // Điểm số tích hợp
+    let pumpScore = 0;
+    let reasons: string[] = [];
+
+    // Pump percent score
+    if (pumpPercent >= 15 && pumpPercent <= 50) {
+      pumpScore += 25;
+      reasons.push(`STRONG_PUMP_${pumpPercent.toFixed(1)}%`);
+    } else if (pumpPercent >= 8) {
+      pumpScore += 20;
+      reasons.push(`PUMP_${pumpPercent.toFixed(1)}%`);
+    }
+
+    // Volume spike score - CAO là tốt
+    if (volumeSpike >= 2.0) {
+      pumpScore += 25;
+      reasons.push(`HIGH_VOLUME_${volumeSpike.toFixed(1)}`);
+    } else if (volumeSpike >= 1.2) {
+      pumpScore += 20;
+      reasons.push(`GOOD_VOLUME_${volumeSpike.toFixed(1)}`);
+    }
+
+    // Drop từ đỉnh - nhỏ là tốt
+    if (dropFromHigh <= 5.0) {
+      pumpScore += 15;
+      reasons.push(`SMALL_DROP_${dropFromHigh.toFixed(1)}%`);
+    } else if (dropFromHigh <= 8.0) {
+      pumpScore += 10;
+      reasons.push(`MODERATE_DROP_${dropFromHigh.toFixed(1)}%`);
+    }
+
+    // Các yếu tố kỹ thuật
+    const lastCandle = candles[candles.length - 1];
+    const upperShadow = lastCandle.high - Math.max(lastCandle.open, lastCandle.close);
+    const bodySize = Math.abs(lastCandle.close - lastCandle.open);
+    const isRejectionCandle = upperShadow > (bodySize * 1.5);
+
+    if (isRejectionCandle) {
+      pumpScore += 15;
+      reasons.push('REJECTION_CANDLE');
+    }
+
+    const distanceToEMA = ema > 0 ? Math.abs(currentPrice - ema) / ema : 0;
+    const isEMARejection = distanceToEMA <= 0.02 && currentPrice < ema;
+
+    if (isEMARejection) {
+      pumpScore += 15;
+      reasons.push('EMA_REJECTION');
+    }
+
+    // Low cap bonus
+    if (isLowCap) {
+      pumpScore += 10;
+      reasons.push('LOW_CAP_BONUS');
+    }
+
+    const isPumpSignal = pumpScore >= 60; // Giảm từ 70 xuống 60
+    const pumpStrength = Math.min(pumpScore / 100, 1);
+
+    return { 
+      isPumpSignal, 
+      pumpStrength, 
+      reason: reasons.join(','),
+      pumpPercent,
+      isLowCap
+    };
   }
 
   private detectStrongDowntrend(
@@ -1389,7 +1477,8 @@ class DualModeStrategyBot {
     atr: number,
     volume24h: number,
     trendStrength: number,
-    volumeSpike: number
+    volumeSpike: number,
+    marketCapRank: number
   ): { hasSignal: boolean; signalType: string; side: 'SHORT'; isDcaSignal?: boolean } {
     
     if (candles.length < 2) {
@@ -1403,6 +1492,24 @@ class DualModeStrategyBot {
 
     const lastCandle = candles[candles.length - 1];
     const prevCandle = candles[candles.length - 2];
+
+    // Sử dụng hàm pump tích hợp mới
+    const pumpSignal = this.detectPumpSignal(
+      candles, currentPrice, ema, marketMomentum, volume24h, trendDirection, marketCapRank
+    );
+    
+    if (pumpSignal.isPumpSignal) {
+      const signalType = pumpSignal.isLowCap ? 
+        `LOWCAP_KILL_LONG_${pumpSignal.reason}` : 
+        `FAKE_PUMP_${pumpSignal.reason}`;
+      
+      return { 
+        hasSignal: true, 
+        signalType, 
+        side: 'SHORT',
+        isDcaSignal: false 
+      };
+    }
 
     const strongDowntrend = this.detectStrongDowntrend(
       candles, trendStrength, trendDirection, volumeSpike, currentPrice, ema
@@ -1612,14 +1719,21 @@ class DualModeStrategyBot {
       const emaAlignment = this.checkEmaAlignment(candles);
 
       const marketCapRank = await this.estimateMarketCapRank(symbol, volume24h, currentPrice);
+      const isLowCap = marketCapRank > LOWCAP_KILL_LONG_CONFIG.maxMarketCapRank;
       
-      const pumpSignals = this.detectPumpSignals(
-        candles, currentPrice, volume24h, marketMomentum, 
-        ema, atr, marketCapRank, trendAnalysis.direction
+      // Sử dụng hàm pump tích hợp mới
+      const pumpSignal = this.detectPumpSignal(
+        candles, currentPrice, ema, marketMomentum, volume24h, trendAnalysis.direction, marketCapRank
       );
 
-      const entryFilter = this.applyEntryFilters(candles, currentPrice, supportLevel, trendAnalysis.direction);
-      const shouldEnter = entryFilter.shouldEnter && pumpSignals.combinedSignal;
+      const entrySignal = this.detectEntrySignal(
+        candles, currentPrice, ema, marketMomentum, trendAnalysis.direction, 
+        supportLevel, resistanceLevel, atr, volume24h, trendAnalysis.strength, volumeSpike, marketCapRank
+      );
+      
+      const strongDowntrendDetection = this.detectStrongDowntrend(
+        candles, trendAnalysis.strength, trendAnalysis.direction, volumeSpike, currentPrice, ema
+      );
 
       const strengthScore = this.calculateStrengthScore(
         dailyVolatility,
@@ -1651,23 +1765,25 @@ class DualModeStrategyBot {
         atr,
         resistanceLevel,
         supportLevel,
-        hasEntrySignal: shouldEnter,
-        signalType: pumpSignals.signalType,
+        hasEntrySignal: entrySignal.hasSignal || pumpSignal.isPumpSignal,
+        signalType: pumpSignal.isPumpSignal ? 
+          (pumpSignal.isLowCap ? `LOWCAP_KILL_LONG_${pumpSignal.reason}` : `FAKE_PUMP_${pumpSignal.reason}`) : 
+          entrySignal.signalType,
         entrySide: 'SHORT',
         volatilityScore,
         volumeScore,
         trendScore,
-        fakePumpSignal: pumpSignals.hasFakePump,
-        fakePumpStrength: pumpSignals.fakePumpStrength,
-        fakePumpReason: pumpSignals.fakePumpReason,
-        strongDowntrendSignal: false,
+        fakePumpSignal: pumpSignal.isPumpSignal && !pumpSignal.isLowCap,
+        fakePumpStrength: pumpSignal.pumpStrength,
+        fakePumpReason: pumpSignal.reason,
+        strongDowntrendSignal: strongDowntrendDetection.isStrongDowntrend,
         trendAcceleration,
         emaAlignment,
-        hasKillLongSignal: pumpSignals.hasKillLong,
-        killLongStrength: pumpSignals.killLongStrength,
-        killLongReason: pumpSignals.killLongReason,
-        pumpPercent: pumpSignals.pumpPercent,
-        isLowCap: marketCapRank <= LOWCAP_KILL_LONG_CONFIG.maxMarketCapRank,
+        hasKillLongSignal: pumpSignal.isPumpSignal && pumpSignal.isLowCap,
+        killLongStrength: pumpSignal.pumpStrength,
+        killLongReason: pumpSignal.reason,
+        pumpPercent: pumpSignal.pumpPercent,
+        isLowCap,
         marketCapRank
       };
     } catch (error) {
@@ -3021,8 +3137,8 @@ class DualModeStrategyBot {
     console.log('💰 POSITION SIZE: 7% account | DCA: 2x 7%');
     console.log('📈 TOTAL EXPOSURE: 21% account (7% + 14% DCA)');
     console.log('🛡️ ENTRY FILTERS: Active - Avoid large drops, long downtrends');
-    console.log('🎯 IMPROVED FAKE PUMP: 3+ candles, <8% drop, NO uptrend required');
-    console.log('🎯 IMPROVED LOWCAP: <20% drop, >60% volume retention');
+    console.log('🎯 IMPROVED FAKE PUMP: 4+ candles, <8% drop, NO UPTREND required');
+    console.log('🎯 IMPROVED LOWCAP: <15% drop, >70% volume retention');
     
     await this.fetchBinanceSymbols();
     
