@@ -26,85 +26,135 @@ interface Order {
 }
 
 const STRATEGY_CONFIG = {
-  initialPositionPercent: 0.1,
-  maxTotalPositionPercent: 0.35,
+  initialPositionPercent: 0.07,
+  maxTotalPositionPercent: 0.21,
   takeProfitLevels: [
     { priceChangePercent: 2.0, closeRatio: 0.4 },
     { priceChangePercent: 4.0, closeRatio: 0.4 },
-    { priceChangePercent: 7.0, closeRatio: 0.2 }
+    { priceChangePercent: 10.0, closeRatio: 0.2 }
   ],
   stopLossLevels: [
-    { priceChangePercent: 1.5, closeRatio: 0.5 },
-    { priceChangePercent: 3.0, closeRatio: 0.5 }
+    { priceChangePercent: 2.5, closeRatio: 0.5 },
+    { priceChangePercent: 4.0, closeRatio: 0.5 }
   ],
-  minDailyVolatility: 5.0,
-  minVolume24h: 10000000,
-  trendStrengthThreshold: 0.8,
-  volumeSpikeThreshold: 1.5,
+  minDailyVolatility: 3.0,
+  minVolume24h: 5000000,
+  trendStrengthThreshold: 0.6,
+  volumeSpikeThreshold: 1.2,
   maxActivePositions: 3,
   maxTrackingCoins: 10,
   minAccountBalancePercent: 0.15,
   emaPeriod: 21,
   resistanceLookback: 20,
-  rsiOverbought: 70,
-  rsiOversold: 30,
+  marketSentiment: {
+    volumeDivergenceThreshold: 0.7,
+    priceRejectionThreshold: 1.5,
+    fearGreedThreshold: 0.6,
+    momentumDivergence: true,
+    marketStructureBreak: true
+  },
   dcaLevels: [
-    { priceChangePercent: 1.5, addRatio: 0.1, condition: 'RESISTANCE' },
-    { priceChangePercent: 3.0, addRatio: 0.15, condition: 'EMA_RESISTANCE' },
-    { priceChangePercent: 4.5, addRatio: 0.2, condition: 'FIBONACCI' }
+    { priceChangePercent: 1.0, addRatio: 0.07, condition: 'MICRO_PULLBACK' },
+    { priceChangePercent: 2.5, addRatio: 0.07, condition: 'STRONG_RESISTANCE' }
   ],
-  maxDcaTimes: 3,
+  maxDcaTimes: 2,
   dcaConditions: {
     volumeDropThreshold: 0.7,
     emaResistance: true,
-    fibonacciLevels: [0.382, 0.5, 0.618]
+    fibonacciLevels: [0.382, 0.5, 0.618],
+    aggressiveDCA: {
+      enabled: true,
+      minTrendStrength: 0.7,
+      maxTimeBetweenDCA: 180000,
+      volumeConfirmation: true,
+      minPriceDrop: 0.5
+    }
   },
   fakePumpDetection: {
     enabled: true,
-    minPumpPercent: 8,
-    volumeDivergenceThreshold: 0.6,
+    minPumpPercent: 4,
+    maxDropFromPump: 8,
+    volumeDivergenceThreshold: 1.2,
     timeFrame: 4,
-    rsiDivergence: true,
+    momentumDivergence: true,
     emaRejection: true,
-    maxRetracement: 0.382
+    maxRetracement: 0.382,
+    minPumpCandles: 3,
+    requireUptrend: false
   },
   strongDowntrend: {
-    minTrendStrength: 0.85,
-    minVolumeSpike: 1.8,
-    accelerationThreshold: -0.002,
+    minTrendStrength: 0.75,
+    minVolumeSpike: 1.5,
+    accelerationThreshold: -0.001,
     emaAlignment: true
   },
-
   trailingStopLoss: {
     enabled: true,
-    activationProfitPercent: 1.0, 
-    trailDistancePercent: 0.5,     
-    maxTrailDistancePercent: 3.0  
+    activationProfitPercent: 1.5,
+    trailDistancePercent: 0.8,
+    maxTrailDistancePercent: 4.0
+  },
+  positiveDCA: {
+    enabled: true,
+    minPullbackPercent: 0.3,
+    maxPullbackPercent: 5.0,
+    volumeDropThreshold: 0.8,
+    momentumThreshold: 0.03,
+    emaResistance: true,
+    fibonacciRetracement: true,
+    pullbackDCA: {
+      enabled: true,
+      minTrendStrength: 0.6,
+      maxConsecutiveDCA: 2,
+      timeBetweenDCA: 180000,
+      volumeMultiplier: 1.0,
+      requireVolumeConfirmation: true,
+      maxTotalDcaPercent: 0.21
+    }
+  },
+  trendStrengthCheck: {
+    minTrendStrength: 0.5,
+    emaAlignment: true,
+    maxMomentum: -0.003,
+    minVolumeSpike: 1.1,
+    trendAccelerationThreshold: -0.0005,
+    reversalDetection: {
+      momentumDivergence: true,
+      pricePattern: true,
+      volumeConfirmation: true,
+      minReversalStrength: 0.6
+    }
+  },
+  entryFilters: {
+    max24hDropPercent: 20,
+    maxRecentDropPercent: 15,
+    minDistanceToSupportPercent: 1,
+    maxDowntrendDurationHours: 72
   }
 };
 
-
 const LOWCAP_KILL_LONG_CONFIG = {
   enabled: true,
-  minPumpPercent: 15,
-  maxPumpPercent: 80,
-  volumeSpikeThreshold: 2.5,
-  killLongDropPercent: 3.0,
-  rsiOverbought: 75,
-  maxMarketCapRank: 300,
-  minLiquidity: 500000,
-  positionSizePercent: 0.08,
-  takeProfit: 8.0,
-  stopLoss: 4.0,
+  minPumpPercent: 8,
+  maxPumpPercent: 100,
+  volumeSpikeThreshold: 2.0,
+  killLongDropPercent: 2.0,
+  momentumOverbought: 0.03,
+  maxMarketCapRank: 500,
+  minLiquidity: 300000,
+  positionSizePercent: 0.07,
+  takeProfit: 10.0,
+  stopLoss: 5.0,
   maxPositions: 2,
   timeframe: "Min5",
-  lookbackCandles: 24,
-  rejectionCandleThreshold: 1.8,
-  emaRejectionThreshold: 0.02,
-  minATRPercent: 2.0,
-  maxPositionAge: 3600000
+  lookbackCandles: 20,
+  rejectionCandleThreshold: 1.5,
+  emaRejectionThreshold: 0.03,
+  minATRPercent: 1.5,
+  maxPositionAge: 3600000,
+  maxDropFromPump: 20,
+  minVolumeRetention: 0.6
 };
-
 
 interface MexcContract {
   symbol: string;
@@ -153,19 +203,21 @@ interface TakeProfitLevel {
   priceChangePercent: number;
   closeRatio: number;
   executed: boolean;
+  quantity?: number;
 }
 
 interface StopLossLevel {
   priceChangePercent: number;
   closeRatio: number;
   executed: boolean;
+  quantity?: number;
 }
 
 interface DcaLevel {
   priceChangePercent: number;
   addRatio: number;
   executed: boolean;
-  condition: 'RESISTANCE' | 'EMA_RESISTANCE' | 'FIBONACCI' | 'BASIC';
+  condition: 'RESISTANCE' | 'EMA_RESISTANCE' | 'FIBONACCI' | 'BASIC' | 'POSITIVE_PULLBACK' | 'MICRO_PULLBACK' | 'RESISTANCE_TOUCH' | 'STRONG_RESISTANCE';
 }
 
 interface TrailingStopLoss {
@@ -197,7 +249,16 @@ interface PositionData {
   checkCount: number;
   isLowCap?: boolean;
   trailingStopLoss?: TrailingStopLoss;
-  pendingDcaOrders: Map<string, { level: number; quantity: number; timestamp: number }>; // Theo dõi các lệnh DCA đang chờ
+  pendingDcaOrders: Map<string, { level: number; quantity: number; timestamp: number }>;
+  sltpRecalculated: boolean;
+  originalTakeProfitLevels?: TakeProfitLevel[];
+  originalStopLossLevels?: StopLossLevel[];
+  lastDcaTime?: number;
+  consecutiveDcaCount: number;
+  lastConsecutiveDcaTime?: number;
+  aggressiveDcaMode: boolean;
+  totalDcaVolume: number;
+  maxDcaVolume: number;
 }
 
 interface KillLongSignal {
@@ -205,7 +266,7 @@ interface KillLongSignal {
   currentPrice: number;
   pumpPercent: number;
   volumeSpike: number;
-  rsi: number;
+  marketMomentum: number;
   killLongStrength: number;
   timestamp: number;
   reason: string;
@@ -235,7 +296,10 @@ interface CoinTrackingData {
   strengthScore: number;
   resistanceLevel: number;
   supportLevel: number;
-  rsi: number;
+  marketMomentum: number;
+  fearGreedIndex: number;
+  volumeDivergence: number;
+  priceMomentum: number;
   ema: number;
   atr: number;
   priceHistory: number[];
@@ -269,13 +333,10 @@ class OrderManager {
 
   openPosition(entryOrder: Order, slOrder?: Order, tpOrder?: Order): string {
     const positionId = this.generatePositionId();
-    
     this.positionMap.set(positionId, entryOrder.orderId);
-    
     entryOrder.positionId = positionId;
     if (slOrder) slOrder.positionId = positionId;
     if (tpOrder) tpOrder.positionId = positionId;
-    
     return positionId;
   }
 
@@ -286,7 +347,7 @@ class OrderManager {
 }
 
 class DualModeStrategyBot {
-  private positions: Map<string, PositionData> = new Map();
+  public positions: Map<string, PositionData> = new Map();
   private trackingCoins: Map<string, CoinTrackingData> = new Map();
   private candidateCoins: Map<string, CoinTrackingData> = new Map();
   private lowCapKillLongSignals: Map<string, KillLongSignal> = new Map();
@@ -304,19 +365,22 @@ class DualModeStrategyBot {
   private lastDcaScan: number = 0;
   private orderManager: OrderManager = new OrderManager();
   private lastLowCapScan: number = 0;
-  private lowCapScanInterval: number = 120000; 
+  private lowCapScanInterval: number = 120000;
   private marketCapRankCache: Map<string, number> = new Map();
   
   private realTimeMonitorInterval: NodeJS.Timeout | null = null;
   private activePositionMonitoring: Set<string> = new Set();
   private pendingDcaOrders: Map<string, { symbol: string; level: number; quantity: number; timestamp: number }> = new Map();
+  private lastDcaCheck: Map<string, number> = new Map();
 
   constructor() {
     console.log('🤖 DUAL MODE STRATEGY BOT - FAKE PUMP + STRONG DOWNTREND + LOWCAP KILL LONG');
-    console.log('🎯 REAL-TIME POSITION MONITORING: ENABLED');
-    console.log('🔍 LOWCAP KILL LONG DETECTION: ENABLED');
-    console.log('💰 DCA ORDER TRACKING: ENABLED');
-    console.log('🛡️ TRAILING STOP LOSS: ENABLED');
+    console.log('🎯 UPDATED CONFIG: Initial Position 7%, 2 DCA Levels (7% each)');
+    console.log('💰 POSITION SIZE: 7% account | DCA: 2x 7%');
+    console.log('📈 TOTAL EXPOSURE: 21% account (7% + 14% DCA)');
+    console.log('🛡️ ENTRY FILTERS: Active - Avoid large drops, long downtrends');
+    console.log('🎯 IMPROVED FAKE PUMP: 3+ candles, <8% drop, NO uptrend required');
+    console.log('🎯 IMPROVED LOWCAP: <20% drop, >60% volume retention');
   }
 
   private async fetchBinanceSymbols(): Promise<Set<string>> {
@@ -352,7 +416,6 @@ class DualModeStrategyBot {
       
       return binanceSymbols;
     } catch (error) {
-      console.log('⚠️ Failed to fetch Binance symbols, using cache');
       return this.binanceSymbolsCache;
     }
   }
@@ -390,110 +453,364 @@ class DualModeStrategyBot {
     }
   }
 
-  private detectLowCapKillLong(
+  private calculateMarketMomentum(candles: SimpleCandle[]): number {
+    if (candles.length < 10) return 0;
+
+    const recentPrices = candles.slice(-10).map(c => c.close);
+    const midPrices = candles.slice(-20, -10).map(c => c.close);
+    
+    const recentAvg = recentPrices.reduce((a, b) => a + b, 0) / recentPrices.length;
+    const midAvg = midPrices.reduce((a, b) => a + b, 0) / midPrices.length;
+    
+    return midAvg > 0 ? (recentAvg - midAvg) / midAvg : 0;
+  }
+
+  private calculateFearGreedIndex(candles: SimpleCandle[], volumeSpike: number): number {
+    if (candles.length < 20) return 0.5;
+
+    const recentCandles = candles.slice(-5);
+    const previousCandles = candles.slice(-10, -5);
+    
+    const recentVolatility = Math.max(...recentCandles.map(c => c.high)) - Math.min(...recentCandles.map(c => c.low));
+    const previousVolatility = Math.max(...previousCandles.map(c => c.high)) - Math.min(...previousCandles.map(c => c.low));
+    const volatilityRatio = previousVolatility > 0 ? recentVolatility / previousVolatility : 1;
+    
+    const recentVolume = recentCandles.reduce((sum, c) => sum + c.volume, 0) / recentCandles.length;
+    const previousVolume = previousCandles.reduce((sum, c) => sum + c.volume, 0) / previousCandles.length;
+    const volumeRatio = previousVolume > 0 ? recentVolume / previousVolume : 1;
+    
+    const rejectionCandles = recentCandles.filter(candle => {
+      const upperShadow = candle.high - Math.max(candle.open, candle.close);
+      const bodySize = Math.abs(candle.close - candle.open);
+      return upperShadow > (bodySize * 1.5);
+    }).length;
+    
+    const rejectionRatio = rejectionCandles / recentCandles.length;
+    
+    let fearGreed = 0.5;
+    
+    fearGreed -= rejectionRatio * 0.3;
+    
+    if (volumeRatio > 1.5) {
+      fearGreed += 0.2;
+    }
+    
+    if (volatilityRatio > 1.5) {
+      fearGreed -= 0.2;
+    }
+    
+    return Math.max(0, Math.min(1, fearGreed));
+  }
+
+  private calculateVolumeDivergence(candles: SimpleCandle[]): number {
+    if (candles.length < 10) return 1;
+
+    const priceChanges: number[] = [];
+    const volumeChanges: number[] = [];
+    
+    for (let i = 1; i < Math.min(6, candles.length); i++) {
+      const priceChange = ((candles[candles.length - i].close - candles[candles.length - i - 1].close) / candles[candles.length - i - 1].close) * 100;
+      const volumeChange = candles[candles.length - i].volume - candles[candles.length - i - 1].volume;
+      
+      priceChanges.push(priceChange);
+      volumeChanges.push(volumeChange);
+    }
+    
+    const avgPriceChange = priceChanges.reduce((a, b) => a + b, 0) / priceChanges.length;
+    const avgVolumeChange = volumeChanges.reduce((a, b) => a + b, 0) / volumeChanges.length;
+    
+    if (avgPriceChange > 0.5 && avgVolumeChange < 0) {
+      return 0.3;
+    } else if (avgPriceChange < -0.5 && avgVolumeChange > 0) {
+      return 0.7;
+    }
+    
+    return 0.5;
+  }
+
+  private calculatePriceMomentum(candles: SimpleCandle[]): number {
+    if (candles.length < 8) return 0;
+
+    const recentGains: number[] = [];
+    const recentLosses: number[] = [];
+    
+    for (let i = candles.length - 1; i > candles.length - 8; i--) {
+      if (i <= 0) break;
+      
+      const change = ((candles[i].close - candles[i - 1].close) / candles[i - 1].close) * 100;
+      
+      if (change > 0) {
+        recentGains.push(change);
+      } else {
+        recentLosses.push(Math.abs(change));
+      }
+    }
+    
+    const avgGain = recentGains.length > 0 ? recentGains.reduce((a, b) => a + b, 0) / recentGains.length : 0;
+    const avgLoss = recentLosses.length > 0 ? recentLosses.reduce((a, b) => a + b, 0) / recentLosses.length : 0;
+    
+    if (avgLoss === 0) return avgGain > 0 ? 1 : 0;
+    
+    return (avgGain - avgLoss) / (avgGain + avgLoss);
+  }
+
+  private detectMomentumDivergence(candles: SimpleCandle[]): boolean {
+    if (candles.length < 15) return false;
+
+    const recentHigh = Math.max(...candles.slice(-8).map(c => c.high));
+    const previousHigh = Math.max(...candles.slice(-15, -8).map(c => c.high));
+    
+    const recentMomentum = this.calculatePriceMomentum(candles.slice(-8));
+    const previousMomentum = this.calculatePriceMomentum(candles.slice(-15, -8));
+    
+    return recentHigh > previousHigh && recentMomentum < previousMomentum;
+  }
+
+  private shouldAvoidEntryDueToLargeDrop(candles: SimpleCandle[], currentPrice: number): { avoid: boolean; reason: string } {
+    if (candles.length < 24) {
+      return { avoid: false, reason: 'INSUFFICIENT_DATA' };
+    }
+
+    const price24hAgo = candles[candles.length - 24]?.close;
+    if (price24hAgo && price24hAgo > 0) {
+      const drop24h = ((price24hAgo - currentPrice) / price24hAgo) * 100;
+      if (drop24h > STRATEGY_CONFIG.entryFilters.max24hDropPercent) {
+        return { 
+          avoid: true, 
+          reason: `LARGE_24H_DROP_${drop24h.toFixed(1)}%` 
+        };
+      }
+    }
+
+    const recentHigh = Math.max(...candles.slice(-12).map(c => c.high));
+    if (recentHigh > 0) {
+      const dropFromHigh = ((recentHigh - currentPrice) / recentHigh) * 100;
+      if (dropFromHigh > STRATEGY_CONFIG.entryFilters.maxRecentDropPercent) {
+        return { 
+          avoid: true, 
+          reason: `LARGE_RECENT_DROP_${dropFromHigh.toFixed(1)}%` 
+        };
+      }
+    }
+
+    return { avoid: false, reason: 'OK' };
+  }
+
+  private calculateDowntrendDuration(candles: SimpleCandle[]): { durationHours: number; isTooLong: boolean } {
+    if (candles.length < 48) {
+      return { durationHours: 0, isTooLong: false };
+    }
+
+    let downtrendStartIndex = -1;
+    
+    for (let i = candles.length - 1; i >= 5; i--) {
+      const current = candles[i];
+      const previous = candles[i - 5];
+      
+      if (current.close < previous.close * 0.95) {
+        downtrendStartIndex = i;
+        break;
+      }
+    }
+
+    if (downtrendStartIndex === -1) {
+      return { durationHours: 0, isTooLong: false };
+    }
+
+    const durationCandles = candles.length - downtrendStartIndex;
+    const durationHours = durationCandles * 5 / 60;
+    
+    const isTooLong = durationHours > STRATEGY_CONFIG.entryFilters.maxDowntrendDurationHours;
+    
+    return { durationHours, isTooLong };
+  }
+
+  private isTooCloseToSupport(currentPrice: number, supportLevel: number): boolean {
+    if (supportLevel <= 0) return false;
+    
+    const distanceToSupport = ((currentPrice - supportLevel) / currentPrice) * 100;
+    return distanceToSupport < STRATEGY_CONFIG.entryFilters.minDistanceToSupportPercent;
+  }
+
+  private applyEntryFilters(
+    candles: SimpleCandle[], 
+    currentPrice: number, 
+    supportLevel: number,
+    trendDirection: string
+  ): { shouldEnter: boolean; reason: string } {
+    
+    const dropCheck = this.shouldAvoidEntryDueToLargeDrop(candles, currentPrice);
+    if (dropCheck.avoid) {
+      return { shouldEnter: false, reason: dropCheck.reason };
+    }
+
+    if (trendDirection === 'DOWNTREND') {
+      const downtrendDuration = this.calculateDowntrendDuration(candles);
+      if (downtrendDuration.isTooLong) {
+        return { 
+          shouldEnter: false, 
+          reason: `LONG_DOWNTREND_${downtrendDuration.durationHours.toFixed(1)}H` 
+        };
+      }
+    }
+
+    if (this.isTooCloseToSupport(currentPrice, supportLevel)) {
+      return { shouldEnter: false, reason: 'TOO_CLOSE_TO_SUPPORT' };
+    }
+
+    return { shouldEnter: true, reason: 'PASSED_ALL_FILTERS' };
+  }
+
+  private detectPumpSignals(
     candles: SimpleCandle[],
     currentPrice: number,
     volume24h: number,
-    rsi: number,
+    marketMomentum: number,
     ema: number,
     atr: number,
-    marketCapRank: number
-  ): { hasKillLongSignal: boolean; killLongStrength: number; reason: string; pumpPercent: number } {
-    
-    if (candles.length < LOWCAP_KILL_LONG_CONFIG.lookbackCandles) {
-      return { hasKillLongSignal: false, killLongStrength: 0, reason: 'INSUFFICIENT_DATA', pumpPercent: 0 };
+    marketCapRank: number,
+    trendDirection: string
+  ): { 
+    hasFakePump: boolean; 
+    fakePumpStrength: number; 
+    fakePumpReason: string;
+    hasKillLong: boolean;
+    killLongStrength: number; 
+    killLongReason: string;
+    pumpPercent: number;
+    combinedSignal: boolean;
+    signalType: string;
+  } {
+    if (candles.length < 10) {
+      return {
+        hasFakePump: false, fakePumpStrength: 0, fakePumpReason: 'INSUFFICIENT_DATA',
+        hasKillLong: false, killLongStrength: 0, killLongReason: 'INSUFFICIENT_DATA',
+        pumpPercent: 0, combinedSignal: false, signalType: 'NO_SIGNAL'
+      };
     }
 
-    if (marketCapRank > LOWCAP_KILL_LONG_CONFIG.maxMarketCapRank) {
-      return { hasKillLongSignal: false, killLongStrength: 0, reason: 'NOT_LOWCAP', pumpPercent: 0 };
-    }
-
-    if (volume24h < LOWCAP_KILL_LONG_CONFIG.minLiquidity) {
-      return { hasKillLongSignal: false, killLongStrength: 0, reason: 'LOW_LIQUIDITY', pumpPercent: 0 };
-    }
-
-    const recentCandles = candles.slice(-LOWCAP_KILL_LONG_CONFIG.lookbackCandles);
+    const lookbackPeriod = Math.max(STRATEGY_CONFIG.fakePumpDetection.minPumpCandles, LOWCAP_KILL_LONG_CONFIG.lookbackCandles);
+    const pumpCandles = candles.slice(-lookbackPeriod);
     
-    const pumpHigh = Math.max(...recentCandles.map(c => c.high));
-    const pumpLow = Math.min(...recentCandles.map(c => c.low));
-    
+    const pumpHigh = Math.max(...pumpCandles.map(c => c.high));
+    const pumpLow = Math.min(...pumpCandles.map(c => c.low));
     const pumpPercent = ((pumpHigh - pumpLow) / pumpLow) * 100;
-    
-    if (pumpPercent < LOWCAP_KILL_LONG_CONFIG.minPumpPercent || 
-        pumpPercent > LOWCAP_KILL_LONG_CONFIG.maxPumpPercent) {
-      return { hasKillLongSignal: false, killLongStrength: 0, reason: `PUMP_PERCENT_${pumpPercent.toFixed(1)}`, pumpPercent };
-    }
-
-    const recentVolume = recentCandles.slice(-4).reduce((sum, c) => sum + c.volume, 0) / 4;
-    const previousVolume = recentCandles.slice(-8, -4).reduce((sum, c) => sum + c.volume, 0) / 4;
-    const volumeSpike = previousVolume > 0 ? recentVolume / previousVolume : 1;
-    
-    if (volumeSpike < LOWCAP_KILL_LONG_CONFIG.volumeSpikeThreshold) {
-      return { hasKillLongSignal: false, killLongStrength: 0, reason: `LOW_VOLUME_SPIKE_${volumeSpike.toFixed(1)}`, pumpPercent };
-    }
-
-    if (rsi < LOWCAP_KILL_LONG_CONFIG.rsiOverbought) {
-      return { hasKillLongSignal: false, killLongStrength: 0, reason: `RSI_NOT_OVERBOUGHT_${rsi.toFixed(1)}`, pumpPercent };
-    }
-
     const dropFromHigh = ((pumpHigh - currentPrice) / pumpHigh) * 100;
-    
-    if (dropFromHigh < LOWCAP_KILL_LONG_CONFIG.killLongDropPercent) {
-      return { hasKillLongSignal: false, killLongStrength: 0, reason: `INSUFFICIENT_DROP_${dropFromHigh.toFixed(1)}`, pumpPercent };
-    }
+
+    const recentVolume = pumpCandles.slice(-4).reduce((sum, c) => sum + c.volume, 0) / 4;
+    const previousVolume = pumpCandles.slice(-8, -4).reduce((sum, c) => sum + c.volume, 0) / 4;
+    const volumeSpike = previousVolume > 0 ? recentVolume / previousVolume : 1;
+    const volumeRetention = recentVolume / previousVolume;
 
     const lastCandle = candles[candles.length - 1];
     const upperShadow = lastCandle.high - Math.max(lastCandle.open, lastCandle.close);
     const bodySize = Math.abs(lastCandle.close - lastCandle.open);
-    const isRejectionCandle = upperShadow > (bodySize * LOWCAP_KILL_LONG_CONFIG.rejectionCandleThreshold);
+    const isRejectionCandle = upperShadow > (bodySize * 1.2);
 
     const distanceToEMA = ema > 0 ? Math.abs(currentPrice - ema) / ema : 0;
-    const isEMARejection = distanceToEMA <= LOWCAP_KILL_LONG_CONFIG.emaRejectionThreshold && currentPrice < ema;
+    const isEMARejection = distanceToEMA <= 0.03 && currentPrice < ema;
 
-    const atrPercent = (atr / currentPrice) * 100;
-    const hasGoodVolatility = atrPercent >= LOWCAP_KILL_LONG_CONFIG.minATRPercent;
+    let fakePumpScore = 0;
+    let fakePumpReasons: string[] = [];
 
-    let killLongScore = 0;
-    let reasons: string[] = [];
-
-    if (dropFromHigh >= 3.0) {
-      killLongScore += 25;
-      reasons.push(`DROP_${dropFromHigh.toFixed(1)}%`);
+    if (pumpPercent >= STRATEGY_CONFIG.fakePumpDetection.minPumpPercent) {
+      fakePumpScore += 25;
+      fakePumpReasons.push(`PUMP_${pumpPercent.toFixed(1)}%`);
     }
 
-    if (volumeSpike >= LOWCAP_KILL_LONG_CONFIG.volumeSpikeThreshold) {
-      killLongScore += 20;
-      reasons.push(`VOLUME_SPIKE_${volumeSpike.toFixed(1)}`);
+    if (dropFromHigh <= STRATEGY_CONFIG.fakePumpDetection.maxDropFromPump) {
+      fakePumpScore += 20;
+      fakePumpReasons.push(`DROP_${dropFromHigh.toFixed(1)}%`);
     }
 
-    if (rsi >= LOWCAP_KILL_LONG_CONFIG.rsiOverbought) {
-      killLongScore += 15;
-      reasons.push(`RSI_${rsi.toFixed(1)}`);
+    if (volumeSpike > STRATEGY_CONFIG.fakePumpDetection.volumeDivergenceThreshold) {
+      fakePumpScore += 20;
+      fakePumpReasons.push(`VOLUME_SPIKE_${volumeSpike.toFixed(2)}`);
     }
 
     if (isRejectionCandle) {
-      killLongScore += 15;
-      reasons.push('REJECTION_CANDLE');
+      fakePumpScore += 15;
+      fakePumpReasons.push('REJECTION_CANDLE');
     }
 
     if (isEMARejection) {
-      killLongScore += 15;
-      reasons.push('EMA_REJECTION');
+      fakePumpScore += 15;
+      fakePumpReasons.push('EMA_REJECTION');
     }
 
-    if (hasGoodVolatility) {
-      killLongScore += 10;
-      reasons.push(`ATR_${atrPercent.toFixed(1)}%`);
+    if (marketMomentum < 0.02) {
+      fakePumpScore += 10;
+      fakePumpReasons.push(`MOMENTUM_${marketMomentum.toFixed(3)}`);
     }
 
-    const hasKillLongSignal = killLongScore >= 70;
+    const hasFakePump = fakePumpScore >= 50;
+    const fakePumpStrength = Math.min(fakePumpScore / 100, 1);
+
+    let killLongScore = 0;
+    let killLongReasons: string[] = [];
+
+    const isLowCap = marketCapRank <= LOWCAP_KILL_LONG_CONFIG.maxMarketCapRank;
+    const hasEnoughLiquidity = volume24h >= LOWCAP_KILL_LONG_CONFIG.minLiquidity;
+
+    if (isLowCap && hasEnoughLiquidity) {
+      killLongScore += 20;
+      killLongReasons.push(`LOWCAP_RANK_${marketCapRank}`);
+
+      if (pumpPercent >= LOWCAP_KILL_LONG_CONFIG.minPumpPercent && 
+          pumpPercent <= LOWCAP_KILL_LONG_CONFIG.maxPumpPercent) {
+        killLongScore += 20;
+        killLongReasons.push(`PUMP_${pumpPercent.toFixed(1)}%`);
+      }
+
+      if (dropFromHigh >= LOWCAP_KILL_LONG_CONFIG.killLongDropPercent && 
+          dropFromHigh <= LOWCAP_KILL_LONG_CONFIG.maxDropFromPump) {
+        killLongScore += 20;
+        killLongReasons.push(`DROP_${dropFromHigh.toFixed(1)}%`);
+      }
+
+      if (volumeSpike >= LOWCAP_KILL_LONG_CONFIG.volumeSpikeThreshold) {
+        killLongScore += 15;
+        killLongReasons.push(`VOLUME_${volumeSpike.toFixed(2)}`);
+      }
+
+      if (marketMomentum >= LOWCAP_KILL_LONG_CONFIG.momentumOverbought) {
+        killLongScore += 10;
+        killLongReasons.push(`MOMENTUM_${marketMomentum.toFixed(3)}`);
+      }
+
+      if (isRejectionCandle) {
+        killLongScore += 10;
+        killLongReasons.push('REJECTION_CANDLE');
+      }
+
+      if (volumeRetention >= LOWCAP_KILL_LONG_CONFIG.minVolumeRetention) {
+        killLongScore += 5;
+        killLongReasons.push(`VOL_RETENTION_${(volumeRetention * 100).toFixed(1)}%`);
+      }
+    }
+
+    const hasKillLong = killLongScore >= 60;
     const killLongStrength = Math.min(killLongScore / 100, 1);
 
+    const combinedSignal = hasFakePump || hasKillLong;
+    let signalType = 'NO_SIGNAL';
+    
+    if (hasKillLong) {
+      signalType = `LOWCAP_KILL_LONG_${killLongReasons.join('_')}`;
+    } else if (hasFakePump) {
+      signalType = `FAKE_PUMP_${fakePumpReasons.join('_')}`;
+    }
+
     return {
-      hasKillLongSignal,
+      hasFakePump,
+      fakePumpStrength,
+      fakePumpReason: fakePumpReasons.join(','),
+      hasKillLong,
       killLongStrength,
-      reason: reasons.join(','),
-      pumpPercent
+      killLongReason: killLongReasons.join(','),
+      pumpPercent,
+      combinedSignal,
+      signalType
     };
   }
 
@@ -516,31 +833,6 @@ class DualModeStrategyBot {
     }
     
     return ema;
-  }
-
-  private calculateRSI(candles: SimpleCandle[], period: number = 14): number {
-    if (candles.length < period + 1) return 50;
-
-    const prices = candles.slice(-period - 1).map(c => c.close);
-    let gains = 0;
-    let losses = 0;
-
-    for (let i = 1; i < prices.length; i++) {
-      const difference = prices[i] - prices[i - 1];
-      if (difference >= 0) {
-        gains += difference;
-      } else {
-        losses -= difference;
-      }
-    }
-
-    const avgGain = gains / period;
-    const avgLoss = losses / period;
-
-    if (avgLoss === 0) return 100;
-    
-    const rs = avgGain / avgLoss;
-    return 100 - (100 / (1 + rs));
   }
 
   private calculateATR(candles: SimpleCandle[], period: number = 14): number {
@@ -703,7 +995,7 @@ class DualModeStrategyBot {
     volume24h: number, 
     trendStrength: number,
     volumeSpike: number,
-    rsi: number,
+    marketMomentum: number,
     trendDirection: string
   ): number {
     const volatilityScore = Math.min((volatility / STRATEGY_CONFIG.minDailyVolatility) * 20, 40);
@@ -715,92 +1007,11 @@ class DualModeStrategyBot {
       additionalScore += 10;
     }
     
-    if (trendDirection === 'DOWNTREND' && rsi > STRATEGY_CONFIG.rsiOversold) {
+    if (trendDirection === 'DOWNTREND' && marketMomentum < 0.05) {
       additionalScore += 10;
     }
 
     return volatilityScore + volumeScore + trendScore + additionalScore;
-  }
-
-  private detectFakePump(
-    candles: SimpleCandle[], 
-    currentPrice: number,
-    ema: number,
-    rsi: number,
-    volume24h: number
-  ): { isFakePump: boolean; pumpStrength: number; reason: string } {
-    
-    if (candles.length < 24) {
-      return { isFakePump: false, pumpStrength: 0, reason: 'INSUFFICIENT_DATA' };
-    }
-
-    const recentLow = Math.min(...candles.slice(-12).map(c => c.low));
-    const recentHigh = Math.max(...candles.slice(-4).map(c => c.high));
-    
-    const pumpPercent = ((recentHigh - recentLow) / recentLow) * 100;
-    
-    if (pumpPercent < STRATEGY_CONFIG.fakePumpDetection.minPumpPercent) {
-      return { isFakePump: false, pumpStrength: 0, reason: 'PUMP_TOO_SMALL' };
-    }
-
-    const volumeDuringPump = candles.slice(-4).reduce((sum, c) => sum + c.volume, 0) / 4;
-    const volumeDuringDowntrend = candles.slice(-24, -4).reduce((sum, c) => sum + c.volume, 0) / 20;
-    
-    const volumeRatio = volumeDuringDowntrend > 0 ? volumeDuringPump / volumeDuringDowntrend : 1;
-    
-    const currentRSI = rsi;
-    const rsiDuringPump = this.calculateRSI(candles.slice(-8));
-    const isRSIDivergence = currentRSI < rsiDuringPump && currentPrice > recentHigh * 0.98;
-
-    const distanceToEMA = ema > 0 ? Math.abs(currentPrice - ema) / ema : 0;
-    const isEMARejection = distanceToEMA <= 0.02 && currentPrice < ema;
-
-    const fibLevels = this.calculateFibonacciLevels(recentHigh, recentLow);
-    const isAtFibResistance = 
-      Math.abs(currentPrice - fibLevels.level382) / fibLevels.level382 <= 0.015 ||
-      Math.abs(currentPrice - fibLevels.level500) / fibLevels.level500 <= 0.015;
-
-    let pumpScore = 0;
-    let reasons: string[] = [];
-
-    if (volumeRatio < STRATEGY_CONFIG.fakePumpDetection.volumeDivergenceThreshold) {
-      pumpScore += 30;
-      reasons.push(`LOW_VOLUME_PUMP:${volumeRatio.toFixed(2)}`);
-    }
-
-    if (isRSIDivergence) {
-      pumpScore += 25;
-      reasons.push('RSI_DIVERGENCE');
-    }
-
-    if (isEMARejection) {
-      pumpScore += 20;
-      reasons.push('EMA_REJECTION');
-    }
-
-    if (isAtFibResistance) {
-      pumpScore += 15;
-      reasons.push('FIB_RESISTANCE');
-    }
-
-    const lastCandle = candles[candles.length - 1];
-    const upperShadow = lastCandle.high - Math.max(lastCandle.open, lastCandle.close);
-    const bodySize = Math.abs(lastCandle.close - lastCandle.open);
-    const isRejectionCandle = upperShadow > (bodySize * 1.5);
-
-    if (isRejectionCandle) {
-      pumpScore += 10;
-      reasons.push('REJECTION_CANDLE');
-    }
-
-    const isFakePump = pumpScore >= 60;
-    const pumpStrength = Math.min(pumpScore / 100, 1);
-
-    return { 
-      isFakePump, 
-      pumpStrength, 
-      reason: reasons.join(',') 
-    };
   }
 
   private detectStrongDowntrend(
@@ -851,11 +1062,327 @@ class DualModeStrategyBot {
     };
   }
 
+  private detectPullbackInDowntrend(
+    candles: SimpleCandle[],
+    currentPrice: number,
+    marketMomentum: number,
+    trendDirection: string,
+    trendStrength: number,
+    ema: number
+  ): { hasPullback: boolean; pullbackStrength: number; reason: string; pullbackPercent: number } {
+    
+    if (trendDirection !== 'DOWNTREND' || trendStrength < STRATEGY_CONFIG.positiveDCA.pullbackDCA.minTrendStrength) {
+      return { hasPullback: false, pullbackStrength: 0, reason: 'TREND_NOT_STRONG', pullbackPercent: 0 };
+    }
+
+    if (candles.length < 10) {
+      return { hasPullback: false, pullbackStrength: 0, reason: 'INSUFFICIENT_DATA', pullbackPercent: 0 };
+    }
+
+    const recentLow = Math.min(...candles.slice(-5).map(c => c.low));
+    const recentHigh = Math.max(...candles.slice(-3).map(c => c.high));
+    
+    const pullbackPercent = ((currentPrice - recentLow) / recentLow) * 100;
+    
+    if (pullbackPercent < STRATEGY_CONFIG.positiveDCA.minPullbackPercent || 
+        pullbackPercent > STRATEGY_CONFIG.positiveDCA.maxPullbackPercent) {
+      return { hasPullback: false, pullbackStrength: 0, reason: `PULLBACK_OUT_OF_RANGE_${pullbackPercent.toFixed(1)}%`, pullbackPercent };
+    }
+
+    if (marketMomentum > STRATEGY_CONFIG.positiveDCA.momentumThreshold) {
+      return { hasPullback: false, pullbackStrength: 0, reason: `MOMENTUM_TOO_HIGH_${marketMomentum.toFixed(3)}`, pullbackPercent };
+    }
+
+    const currentVolume = candles[candles.length - 1]?.volume || 0;
+    const avgVolume = candles.slice(-10).reduce((sum, c) => sum + c.volume, 0) / 10;
+    const volumeRatio = avgVolume > 0 ? currentVolume / avgVolume : 1;
+    
+    if (STRATEGY_CONFIG.positiveDCA.pullbackDCA.requireVolumeConfirmation && volumeRatio > STRATEGY_CONFIG.positiveDCA.volumeDropThreshold) {
+      return { hasPullback: false, pullbackStrength: 0, reason: `HIGH_VOLUME_PULLBACK_${volumeRatio.toFixed(2)}`, pullbackPercent };
+    }
+
+    const emaDistance = Math.abs(currentPrice - ema) / ema;
+    const isNearEMA = emaDistance <= 0.02 && currentPrice < ema;
+
+    const lastCandle = candles[candles.length - 1];
+    const upperShadow = lastCandle.high - Math.max(lastCandle.open, lastCandle.close);
+    const bodySize = Math.abs(lastCandle.close - lastCandle.open);
+    const isRejectionCandle = upperShadow > (bodySize * 1.2);
+
+    let pullbackScore = 0;
+    let reasons: string[] = [];
+
+    if (pullbackPercent >= 0.5 && pullbackPercent <= 2.0) {
+      pullbackScore += 30;
+      reasons.push(`PERFECT_PULLBACK_${pullbackPercent.toFixed(1)}%`);
+    } else {
+      pullbackScore += 20;
+      reasons.push(`PULLBACK_${pullbackPercent.toFixed(1)}%`);
+    }
+
+    if (trendStrength >= 0.8) {
+      pullbackScore += 25;
+      reasons.push(`STRONG_TREND_${(trendStrength * 100).toFixed(0)}%`);
+    } else if (trendStrength >= 0.6) {
+      pullbackScore += 15;
+      reasons.push(`MEDIUM_TREND_${(trendStrength * 100).toFixed(0)}%`);
+    }
+
+    if (marketMomentum < 0) {
+      pullbackScore += 15;
+      reasons.push(`NEGATIVE_MOMENTUM_${marketMomentum.toFixed(3)}`);
+    }
+
+    if (isNearEMA) {
+      pullbackScore += 15;
+      reasons.push('EMA_RESISTANCE');
+    }
+
+    if (isRejectionCandle) {
+      pullbackScore += 15;
+      reasons.push('REJECTION_CANDLE');
+    }
+
+    const hasPullback = pullbackScore >= 70;
+    const pullbackStrength = Math.min(pullbackScore / 100, 1);
+
+    return {
+      hasPullback,
+      pullbackStrength,
+      reason: reasons.join(','),
+      pullbackPercent
+    };
+  }
+
+  private detectPositiveDCASignal(
+    candles: SimpleCandle[],
+    currentPrice: number,
+    ema: number,
+    marketMomentum: number,
+    trendDirection: string,
+    trendStrength: number,
+    volumeSpike: number
+  ): { hasPositiveDCA: boolean; dcaReason: string; pullbackPercent: number } {
+    
+    if (!STRATEGY_CONFIG.positiveDCA.enabled || trendDirection !== 'DOWNTREND') {
+      return { hasPositiveDCA: false, dcaReason: 'TREND_NOT_DOWNTREND', pullbackPercent: 0 };
+    }
+
+    if (candles.length < 20) {
+      return { hasPositiveDCA: false, dcaReason: 'INSUFFICIENT_DATA', pullbackPercent: 0 };
+    }
+
+    const recentLow = Math.min(...candles.slice(-10).map(c => c.low));
+    const recentHigh = Math.max(...candles.slice(-5).map(c => c.high));
+    
+    const pullbackPercent = ((currentPrice - recentLow) / recentLow) * 100;
+    
+    if (pullbackPercent < STRATEGY_CONFIG.positiveDCA.minPullbackPercent || 
+        pullbackPercent > STRATEGY_CONFIG.positiveDCA.maxPullbackPercent) {
+      return { hasPositiveDCA: false, dcaReason: `PULLBACK_OUT_OF_RANGE_${pullbackPercent.toFixed(1)}%`, pullbackPercent };
+    }
+
+    const currentVolume = candles[candles.length - 1]?.volume || 0;
+    const avgVolume = candles.slice(-10).reduce((sum, c) => sum + c.volume, 0) / 10;
+    const volumeRatio = avgVolume > 0 ? currentVolume / avgVolume : 1;
+    
+    if (volumeRatio > STRATEGY_CONFIG.positiveDCA.volumeDropThreshold) {
+      return { hasPositiveDCA: false, dcaReason: `HIGH_VOLUME_PULLBACK_${volumeRatio.toFixed(2)}`, pullbackPercent };
+    }
+
+    if (marketMomentum > STRATEGY_CONFIG.positiveDCA.momentumThreshold) {
+      return { hasPositiveDCA: false, dcaReason: `MOMENTUM_TOO_HIGH_${marketMomentum.toFixed(3)}`, pullbackPercent };
+    }
+
+    if (STRATEGY_CONFIG.positiveDCA.emaResistance) {
+      const emaDistance = Math.abs(currentPrice - ema) / ema;
+      if (emaDistance <= 0.02 && currentPrice < ema) {
+        return { hasPositiveDCA: true, dcaReason: 'EMA_RESISTANCE_PULLBACK', pullbackPercent };
+      }
+    }
+
+    if (STRATEGY_CONFIG.positiveDCA.fibonacciRetracement) {
+      const majorLow = Math.min(...candles.slice(-50).map(c => c.low));
+      const majorHigh = Math.max(...candles.slice(-50).map(c => c.high));
+      const fibLevels = this.calculateFibonacciLevels(majorHigh, majorLow);
+      
+      const fib382Distance = Math.abs(currentPrice - fibLevels.level382) / fibLevels.level382;
+      const fib500Distance = Math.abs(currentPrice - fibLevels.level500) / fibLevels.level500;
+      const fib618Distance = Math.abs(currentPrice - fibLevels.level618) / fibLevels.level618;
+
+      if (fib382Distance <= 0.015 || fib500Distance <= 0.015 || fib618Distance <= 0.015) {
+        return { hasPositiveDCA: true, dcaReason: 'FIBONACCI_PULLBACK', pullbackPercent };
+      }
+    }
+
+    const lastCandle = candles[candles.length - 1];
+    const upperShadow = lastCandle.high - Math.max(lastCandle.open, lastCandle.close);
+    const bodySize = Math.abs(lastCandle.close - lastCandle.open);
+    const isRejectionCandle = upperShadow > (bodySize * 1.5);
+
+    if (isRejectionCandle && pullbackPercent >= 2.0) {
+      return { hasPositiveDCA: true, dcaReason: 'REJECTION_CANDLE_PULLBACK', pullbackPercent };
+    }
+
+    return { hasPositiveDCA: false, dcaReason: 'NO_POSITIVE_DCA_SIGNAL', pullbackPercent };
+  }
+
+  private checkTrendStrengthAndReversal(
+    candles: SimpleCandle[],
+    currentPrice: number,
+    ema: number,
+    marketMomentum: number,
+    trendDirection: string,
+    trendStrength: number,
+    volumeSpike: number,
+    trendAcceleration: number
+  ): { trendStillStrong: boolean; reversalSign: boolean; reason: string; trendStrengthScore: number } {
+    
+    if (trendDirection !== 'DOWNTREND') {
+      return { trendStillStrong: false, reversalSign: true, reason: 'TREND_NOT_DOWNTREND', trendStrengthScore: 0 };
+    }
+
+    let trendStrengthScore = 0;
+    let reasons: string[] = [];
+    let reversalSigns: string[] = [];
+
+    if (trendStrength >= STRATEGY_CONFIG.trendStrengthCheck.minTrendStrength) {
+      trendStrengthScore += 25;
+      reasons.push(`TREND_STRENGTH_${(trendStrength * 100).toFixed(0)}%`);
+    } else {
+      reversalSigns.push(`WEAK_TREND_${(trendStrength * 100).toFixed(0)}%`);
+    }
+
+    const emaAlignment = this.checkEmaAlignment(candles);
+    if (emaAlignment) {
+      trendStrengthScore += 20;
+      reasons.push('EMA_ALIGNMENT');
+    } else {
+      reversalSigns.push('EMA_ALIGNMENT_BROKEN');
+    }
+
+    if (trendAcceleration <= STRATEGY_CONFIG.trendStrengthCheck.trendAccelerationThreshold) {
+      trendStrengthScore += 15;
+      reasons.push(`ACCELERATING_DOWN_${trendAcceleration.toFixed(4)}`);
+    }
+
+    if (volumeSpike >= STRATEGY_CONFIG.trendStrengthCheck.minVolumeSpike) {
+      trendStrengthScore += 15;
+      reasons.push(`HIGH_VOLUME_${volumeSpike.toFixed(2)}`);
+    }
+
+    const priceToEMARatio = ema > 0 ? (currentPrice / ema) : 1;
+    if (priceToEMARatio < 0.98) {
+      trendStrengthScore += 15;
+      reasons.push(`PRICE_BELOW_EMA_${(priceToEMARatio * 100).toFixed(1)}%`);
+    } else if (priceToEMARatio > 1.02) {
+      reversalSigns.push(`PRICE_ABOVE_EMA_${(priceToEMARatio * 100).toFixed(1)}%`);
+    }
+
+    if (marketMomentum <= STRATEGY_CONFIG.trendStrengthCheck.maxMomentum) {
+      trendStrengthScore += 10;
+      reasons.push(`MOMENTUM_OK_${marketMomentum.toFixed(3)}`);
+    } else {
+      reversalSigns.push(`MOMENTUM_HIGH_${marketMomentum.toFixed(3)}`);
+    }
+
+    if (STRATEGY_CONFIG.trendStrengthCheck.reversalDetection.momentumDivergence) {
+      const hasBullishDivergence = this.detectMomentumDivergence(candles);
+      if (hasBullishDivergence) {
+        reversalSigns.push('MOMENTUM_BULLISH_DIVERGENCE');
+        trendStrengthScore -= 20;
+      }
+    }
+
+    if (STRATEGY_CONFIG.trendStrengthCheck.reversalDetection.pricePattern) {
+      const hasReversalPattern = this.checkReversalPricePattern(candles);
+      if (hasReversalPattern) {
+        reversalSigns.push('REVERSAL_PRICE_PATTERN');
+        trendStrengthScore -= 15;
+      }
+    }
+
+    if (STRATEGY_CONFIG.trendStrengthCheck.reversalDetection.volumeConfirmation) {
+      const hasReversalVolume = this.checkReversalVolume(candles);
+      if (hasReversalVolume) {
+        reversalSigns.push('REVERSAL_VOLUME');
+        trendStrengthScore -= 10;
+      }
+    }
+
+    const resistanceLevel = this.findResistanceLevel(candles, 10);
+    const resistanceDistance = resistanceLevel > 0 ? Math.abs(currentPrice - resistanceLevel) / resistanceLevel : 0;
+    if (resistanceDistance <= 0.01 && currentPrice > resistanceLevel) {
+      reversalSigns.push(`BROKE_RESISTANCE_${resistanceDistance.toFixed(3)}`);
+      trendStrengthScore -= 15;
+    }
+
+    const trendStillStrong = trendStrengthScore >= 60;
+    const reversalSign = reversalSigns.length >= 2 || trendStrengthScore < 40;
+
+    let reason = '';
+    if (trendStillStrong) {
+      reason = `TREND_STRONG: ${reasons.join(', ')}`;
+    } else if (reversalSign) {
+      reason = `REVERSAL_SIGNS: ${reversalSigns.join(', ')}`;
+    } else {
+      reason = `WEAK_TREND: ${reasons.join(', ')} | ${reversalSigns.join(', ')}`;
+    }
+
+    return {
+      trendStillStrong,
+      reversalSign,
+      reason,
+      trendStrengthScore
+    };
+  }
+
+  private checkReversalPricePattern(candles: SimpleCandle[]): boolean {
+    if (candles.length < 5) return false;
+
+    const recentCandles = candles.slice(-5);
+    
+    const lastCandle = recentCandles[recentCandles.length - 1];
+    const prevCandle = recentCandles[recentCandles.length - 2];
+    
+    const isBullishEngulfing = 
+      prevCandle.close < prevCandle.open &&
+      lastCandle.close > lastCandle.open &&
+      lastCandle.open < prevCandle.close &&
+      lastCandle.close > prevCandle.open;
+
+    const isHammer = 
+      lastCandle.close > lastCandle.open &&
+      (lastCandle.close - lastCandle.open) * 3 <= (lastCandle.open - lastCandle.low) &&
+      (lastCandle.high - lastCandle.close) <= (lastCandle.close - lastCandle.open);
+
+    const isMorningStar = recentCandles.length >= 3 && 
+      recentCandles[recentCandles.length - 3].close < recentCandles[recentCandles.length - 3].open &&
+      Math.abs(recentCandles[recentCandles.length - 2].close - recentCandles[recentCandles.length - 2].open) < 
+        (recentCandles[recentCandles.length - 3].open - recentCandles[recentCandles.length - 3].close) * 0.3 &&
+      recentCandles[recentCandles.length - 1].close > recentCandles[recentCandles.length - 1].open &&
+      recentCandles[recentCandles.length - 1].close > recentCandles[recentCandles.length - 3].open;
+
+    return isBullishEngulfing || isHammer || isMorningStar;
+  }
+
+  private checkReversalVolume(candles: SimpleCandle[]): boolean {
+    if (candles.length < 6) return false;
+
+    const recentCandles = candles.slice(-6);
+    const volumeSpike = this.calculateVolumeSpike(recentCandles.map(c => c.volume));
+    
+    const lastCandle = recentCandles[recentCandles.length - 1];
+    const isBullishCandle = lastCandle.close > lastCandle.open;
+    
+    return isBullishCandle && volumeSpike > 1.5;
+  }
+
   private detectEntrySignal(
     candles: SimpleCandle[], 
     currentPrice: number, 
     ema: number, 
-    rsi: number,
+    marketMomentum: number,
     trendDirection: string,
     support: number,
     resistance: number,
@@ -869,29 +1396,19 @@ class DualModeStrategyBot {
       return { hasSignal: false, signalType: '', side: 'SHORT' };
     }
 
+    const entryFilter = this.applyEntryFilters(candles, currentPrice, support, trendDirection);
+    if (!entryFilter.shouldEnter) {
+      return { hasSignal: false, signalType: `FILTERED:${entryFilter.reason}`, side: 'SHORT' };
+    }
+
     const lastCandle = candles[candles.length - 1];
     const prevCandle = candles[candles.length - 2];
-
-    if (STRATEGY_CONFIG.fakePumpDetection.enabled) {
-      const fakePump = this.detectFakePump(candles, currentPrice, ema, rsi, volume24h);
-      
-      if (fakePump.isFakePump) {
-        console.log(`🎯 FAKE PUMP DETECTED: ${fakePump.reason} | Strength: ${(fakePump.pumpStrength * 100).toFixed(0)}%`);
-        return { 
-          hasSignal: true, 
-          signalType: `FAKE_PUMP_${fakePump.reason}`, 
-          side: 'SHORT',
-          isDcaSignal: false 
-        };
-      }
-    }
 
     const strongDowntrend = this.detectStrongDowntrend(
       candles, trendStrength, trendDirection, volumeSpike, currentPrice, ema
     );
 
     if (strongDowntrend.isStrongDowntrend) {
-      console.log(`🎯 STRONG DOWNTREND DETECTED: ${strongDowntrend.reason} | Strength: ${(strongDowntrend.trendStrength * 100).toFixed(0)}%`);
       return {
         hasSignal: true,
         signalType: `STRONG_DOWNTREND_${strongDowntrend.reason}`,
@@ -900,36 +1417,31 @@ class DualModeStrategyBot {
       };
     }
 
+    const positiveDCA = this.detectPositiveDCASignal(
+      candles, currentPrice, ema, marketMomentum, trendDirection, trendStrength, volumeSpike
+    );
+
+    if (positiveDCA.hasPositiveDCA) {
+      return {
+        hasSignal: true,
+        signalType: `POSITIVE_DCA_${positiveDCA.dcaReason}`,
+        side: 'SHORT',
+        isDcaSignal: true
+      };
+    }
+
     if (trendDirection === 'DOWNTREND') {
       const isNearResistance = currentPrice >= resistance * 0.98;
       const isNearEMA = ema > 0 && currentPrice >= ema * 0.99;
-      const isRSIOK = rsi > STRATEGY_CONFIG.rsiOversold;
+      const isMomentumOK = marketMomentum < 0.02;
       const isBearishCandle = lastCandle.close < lastCandle.open && lastCandle.close < prevCandle.close;
       
-      if ((isNearResistance || isNearEMA) && isRSIOK && isBearishCandle) {
+      if ((isNearResistance || isNearEMA) && isMomentumOK && isBearishCandle) {
         return { hasSignal: true, signalType: 'DOWNTREND_PULLBACK', side: 'SHORT' };
       }
     }
 
-    if (trendDirection === 'DOWNTREND') {
-      const priceFromResistance = Math.abs(currentPrice - resistance) / resistance;
-      const isStrongPullback = priceFromResistance <= 0.03;
-      
-      const volumes = candles.map(c => c.volume);
-      const currentVolumeSpike = this.calculateVolumeSpike(volumes);
-      const isLowVolume = currentVolumeSpike < 0.8;
-    
-      if (isStrongPullback && isLowVolume) {
-        return { 
-          hasSignal: true, 
-          signalType: 'DCA_PULLBACK_OPPORTUNITY', 
-          side: 'SHORT',
-          isDcaSignal: true 
-        };
-      }
-    }
-
-    if (currentPrice < support && trendDirection === 'DOWNTREND' && rsi > 30) {
+    if (currentPrice < support && trendDirection === 'DOWNTREND' && marketMomentum < 0.05) {
       return { hasSignal: true, signalType: 'BREAKDOWN_SUPPORT', side: 'SHORT' };
     }
 
@@ -982,7 +1494,6 @@ class DualModeStrategyBot {
       return contractInfo;
 
     } catch (error: any) {
-      console.log(`⚠️ Failed to get contract info for ${symbol}, using fallback`);
       return this.getFallbackContractInfo(symbol, cacheKey);
     }
   }
@@ -1034,7 +1545,6 @@ class DualModeStrategyBot {
       }
       return [];
     } catch (err: any) {
-      console.log(`⚠️ Failed to fetch kline data for ${symbol}`);
       return [];
     }
   }
@@ -1049,7 +1559,10 @@ class DualModeStrategyBot {
     strengthScore: number;
     candles: SimpleCandle[];
     ema: number;
-    rsi: number;
+    marketMomentum: number;
+    fearGreedIndex: number;
+    volumeDivergence: number;
+    priceMomentum: number;
     atr: number;
     resistanceLevel: number;
     supportLevel: number;
@@ -1087,7 +1600,10 @@ class DualModeStrategyBot {
       const volumes = candles.map(k => k.volume);
       const volumeSpike = this.calculateVolumeSpike(volumes);
       const ema = this.calculateEMA(candles, STRATEGY_CONFIG.emaPeriod);
-      const rsi = this.calculateRSI(candles);
+      const marketMomentum = this.calculateMarketMomentum(candles);
+      const fearGreedIndex = this.calculateFearGreedIndex(candles, volumeSpike);
+      const volumeDivergence = this.calculateVolumeDivergence(candles);
+      const priceMomentum = this.calculatePriceMomentum(candles);
       const atr = this.calculateATR(candles);
       const resistanceLevel = this.findResistanceLevel(candles, STRATEGY_CONFIG.resistanceLookback);
       const supportLevel = this.findSupportLevel(candles, STRATEGY_CONFIG.resistanceLookback);
@@ -1096,29 +1612,21 @@ class DualModeStrategyBot {
       const emaAlignment = this.checkEmaAlignment(candles);
 
       const marketCapRank = await this.estimateMarketCapRank(symbol, volume24h, currentPrice);
-      const isLowCap = marketCapRank > LOWCAP_KILL_LONG_CONFIG.maxMarketCapRank;
       
-      const killLongDetection = this.detectLowCapKillLong(
-        candles, currentPrice, volume24h, rsi, ema, atr, marketCapRank
+      const pumpSignals = this.detectPumpSignals(
+        candles, currentPrice, volume24h, marketMomentum, 
+        ema, atr, marketCapRank, trendAnalysis.direction
       );
 
-      const entrySignal = this.detectEntrySignal(
-        candles, currentPrice, ema, rsi, trendAnalysis.direction, 
-        supportLevel, resistanceLevel, atr, volume24h, trendAnalysis.strength, volumeSpike
-      );
-
-      const fakePumpDetection = this.detectFakePump(candles, currentPrice, ema, rsi, volume24h);
-      
-      const strongDowntrendDetection = this.detectStrongDowntrend(
-        candles, trendAnalysis.strength, trendAnalysis.direction, volumeSpike, currentPrice, ema
-      );
+      const entryFilter = this.applyEntryFilters(candles, currentPrice, supportLevel, trendAnalysis.direction);
+      const shouldEnter = entryFilter.shouldEnter && pumpSignals.combinedSignal;
 
       const strengthScore = this.calculateStrengthScore(
         dailyVolatility,
         volume24h,
         trendAnalysis.strength,
         volumeSpike,
-        rsi,
+        marketMomentum,
         trendAnalysis.direction
       );
 
@@ -1136,33 +1644,33 @@ class DualModeStrategyBot {
         strengthScore,
         candles,
         ema,
-        rsi,
+        marketMomentum,
+        fearGreedIndex,
+        volumeDivergence,
+        priceMomentum,
         atr,
         resistanceLevel,
         supportLevel,
-        hasEntrySignal: entrySignal.hasSignal || killLongDetection.hasKillLongSignal,
-        signalType: killLongDetection.hasKillLongSignal ? 
-          `LOWCAP_KILL_LONG_${killLongDetection.reason}` : 
-          entrySignal.signalType,
+        hasEntrySignal: shouldEnter,
+        signalType: pumpSignals.signalType,
         entrySide: 'SHORT',
         volatilityScore,
         volumeScore,
         trendScore,
-        fakePumpSignal: fakePumpDetection.isFakePump,
-        fakePumpStrength: fakePumpDetection.pumpStrength,
-        fakePumpReason: fakePumpDetection.reason,
-        strongDowntrendSignal: strongDowntrendDetection.isStrongDowntrend,
+        fakePumpSignal: pumpSignals.hasFakePump,
+        fakePumpStrength: pumpSignals.fakePumpStrength,
+        fakePumpReason: pumpSignals.fakePumpReason,
+        strongDowntrendSignal: false,
         trendAcceleration,
         emaAlignment,
-        hasKillLongSignal: killLongDetection.hasKillLongSignal,
-        killLongStrength: killLongDetection.killLongStrength,
-        killLongReason: killLongDetection.reason,
-        pumpPercent: killLongDetection.pumpPercent,
-        isLowCap,
+        hasKillLongSignal: pumpSignals.hasKillLong,
+        killLongStrength: pumpSignals.killLongStrength,
+        killLongReason: pumpSignals.killLongReason,
+        pumpPercent: pumpSignals.pumpPercent,
+        isLowCap: marketCapRank <= LOWCAP_KILL_LONG_CONFIG.maxMarketCapRank,
         marketCapRank
       };
     } catch (error) {
-      console.log(`⚠️ Error calculating indicators for ${symbol}`);
       return this.getDefaultIndicatorResult();
     }
   }
@@ -1178,7 +1686,10 @@ class DualModeStrategyBot {
       strengthScore: 0,
       candles: [],
       ema: 0,
-      rsi: 50,
+      marketMomentum: 0,
+      fearGreedIndex: 0.5,
+      volumeDivergence: 0.5,
+      priceMomentum: 0,
       atr: 0,
       resistanceLevel: 0,
       supportLevel: 0,
@@ -1208,7 +1719,6 @@ class DualModeStrategyBot {
       const usdtAsset = await client.getAccountAsset('USDT') as any;
       return usdtAsset.data.availableBalance;
     } catch (e: any) {
-      console.log('⚠️ Failed to get USDT balance');
       return 0;
     }
   }
@@ -1249,16 +1759,16 @@ class DualModeStrategyBot {
       if (openQty <= 0) return {success: false};
 
       const formattedSymbol = symbol.replace('USDT', '_USDT');
-      const orderSide = 3; 
+      const orderSide = 3;
 
-      console.log(`🔔 OPEN ORDER: ${symbol} | ${openQty} contracts | Price: ${currentPrice} | Side: SHORT`);
+      console.log(`🔔 OPEN ORDER: ${symbol} | ${openQty} contracts | Price: ${currentPrice} | Side: SHORT | Signal: ${signalType}`);
 
       const orderResponse = await client.submitOrder({
         symbol: formattedSymbol,
         price: currentPrice,
         vol: openQty,
         side: orderSide,
-        type: 5, 
+        type: 5,
         openType: 2,
         leverage: LEVERAGE,
         positionId: 0,
@@ -1276,20 +1786,17 @@ class DualModeStrategyBot {
         orderId = `order_${Date.now()}`;
       }
 
-      console.log(`✅ OPEN RESPONSE:`, orderResponse);
-
       if (!realPositionId) {
         try {
-          await new Promise(resolve => setTimeout(resolve, 2000)); 
+          await new Promise(resolve => setTimeout(resolve, 2000));
           
           const positionInfo = await this.getPositionForSymbol(symbol);
           if (positionInfo) {
             realPositionId = positionInfo.id?.toString() || 
                             positionInfo.positionId?.toString();
-            console.log(`✅ GOT REAL POSITION ID FROM API: ${symbol} -> ${realPositionId}`);
           }
         } catch (error) {
-          console.log(`⚠️ Could not fetch real positionId for ${symbol}`);
+          // Silent error
         }
       }
 
@@ -1302,18 +1809,14 @@ class DualModeStrategyBot {
       return {success: true, positionId, realPositionId};
 
     } catch (err: any) {
-      console.log(`❌ OPEN FAILED: ${symbol} | Error: ${err.message}`);
       return {success: false};
     }
   }
 
   private async closeAllPositionsForSymbol(symbol: string, position: PositionData, reason: string): Promise<void> {
     try {
-      console.log(`🚨 CLOSE ALL TRIGGERED: ${symbol} | Reason: ${reason}`);
-      
       const remainingQty = position.positionSize - position.closedAmount;
       if (remainingQty <= 0) {
-        console.log(`✅ No remaining quantity to close for ${symbol}`);
         return;
       }
 
@@ -1329,33 +1832,24 @@ class DualModeStrategyBot {
       const formattedSymbol = symbol.replace('USDT', '_USDT');
       const targetPositionId = position.realPositionId ? parseInt(position.realPositionId) : 0;
 
-      console.log(`🔔 CLOSE ALL ORDER: ${symbol} | ${closeQty} contracts | Price: ${currentPrice} | Reason: ${reason} | Side: 2 (CLOSE SHORT)`);
-
       const orderResponse = await client.submitOrder({
         symbol: formattedSymbol,
         price: currentPrice,
         vol: closeQty,
-        side: 2, 
-        type: 5, 
+        side: 2,
+        type: 5,
         openType: 2,
         leverage: LEVERAGE,
         positionId: targetPositionId,
       }) as any;
 
-      console.log(`✅ CLOSE ALL RESPONSE:`, orderResponse);
-
       if (orderResponse.success === true && orderResponse.code === 0) {
         position.closedAmount = position.positionSize;
-        this.positions.delete(symbol);
-        this.activePositionMonitoring.delete(symbol);
-        
-        console.log(`✅ CLOSE ALL SUCCESS: ${symbol} | Closed ${closeQty} contracts`);
-      } else {
-        console.log(`❌ CLOSE ALL FAILED: ${symbol} | Error: ${orderResponse.msg || 'Unknown error'}`);
+        this.cleanupPosition(symbol);
       }
 
     } catch (error: any) {
-      console.log(`❌ CLOSE ALL ERROR: ${symbol} | ${error.message}`);
+      // Silent error
     }
   }
 
@@ -1366,7 +1860,6 @@ class DualModeStrategyBot {
       const targetPositionId = position?.realPositionId ? parseInt(position.realPositionId) : 0;
 
       if (!position) {
-        console.log(`❌ CLOSE FAILED: No position found for ${symbol}`);
         return false;
       }
 
@@ -1381,27 +1874,23 @@ class DualModeStrategyBot {
       
       const formattedSymbol = symbol.replace('USDT', '_USDT');
 
-      console.log(`🔔 CLOSE ORDER: ${symbol} | ${closeQty} contracts | Price: ${currentPrice} | Reason: ${reason} | PositionID: ${targetPositionId} | Side: 2 (CLOSE SHORT)`);
+      console.log(`🔔 CLOSE ORDER: ${symbol} | ${closeQty} contracts | Price: ${currentPrice} | Reason: ${reason}`);
       
       const orderResponse = await client.submitOrder({
         symbol: formattedSymbol,
         price: currentPrice,
         vol: closeQty,
-        side: 2, 
-        type: 5, 
+        side: 2,
+        type: 5,
         openType: 2,
         leverage: LEVERAGE,
         positionId: targetPositionId,
       }) as any;
 
-      console.log(`✅ CLOSE RESPONSE:`, orderResponse);
-
       if (orderResponse.success === false || orderResponse.code !== 0) {
-        console.log(`❌ CLOSE ORDER FAILED: ${symbol} | Error: ${orderResponse.msg || 'Unknown error'}`);
         await this.closeAllPositionsForSymbol(symbol, position, 'CLOSE_ALL_ON_ERROR');
         return false;
       }
-
 
       if (position) {
         const profit = await this.calculateProfitForQuantity(position, currentPrice, closeQty);
@@ -1411,7 +1900,6 @@ class DualModeStrategyBot {
       return true;
 
     } catch (err: any) {
-
       const position = this.positions.get(symbol);
       if (position) {
         await this.closeAllPositionsForSymbol(symbol, position, 'CLOSE_ALL_ON_EXCEPTION');
@@ -1423,7 +1911,7 @@ class DualModeStrategyBot {
 
   private startRealTimeMonitoring(symbol: string, positionId: string): void {
     if (this.activePositionMonitoring.has(symbol)) {
-      return; 
+      return;
     }
 
     this.activePositionMonitoring.add(symbol);
@@ -1443,80 +1931,71 @@ class DualModeStrategyBot {
         if (currentPrice <= 0) return;
 
         await this.checkImmediateSLTP(symbol, position, currentPrice);
-
-        await this.checkImmediateDCA(symbol, position, currentPrice);
-
         await this.checkTrailingStopLoss(symbol, position, currentPrice);
 
       } catch (error) {
-        console.log(`⚠️ Real-time monitoring error for ${symbol}`);
+        // Silent error
       }
-    }, 5000); 
+    }, 5000);
 
     if (!this.realTimeMonitorInterval) {
       this.realTimeMonitorInterval = monitorInterval;
     }
   }
 
-  private async checkImmediateDCA(symbol: string, position: PositionData, currentPrice: number): Promise<void> {
-    if (position.dcaCount >= STRATEGY_CONFIG.maxDcaTimes || position.isLowCap) return;
+  private recalculateSLTPAfterDCA(position: PositionData): void {
+    if (position.isLowCap) return;
+    
+    if (!position.originalTakeProfitLevels) {
+      position.originalTakeProfitLevels = JSON.parse(JSON.stringify(position.takeProfitLevels));
+    }
+    if (!position.originalStopLossLevels) {
+      position.originalStopLossLevels = JSON.parse(JSON.stringify(position.stopLossLevels));
+    }
 
-    try {
-      const priceChange = this.calculatePriceChangePercent(position.averagePrice, currentPrice);
-
-      for (let i = 0; i < position.dcaLevels.length; i++) {
-        const level = position.dcaLevels[i];
-        
-        if (!level.executed) {
-          const shouldExecute = priceChange >= level.priceChangePercent;
-
-          if (shouldExecute) {
-            const dcaQty = await this.calculatePositionSize(
-              symbol, 
-              STRATEGY_CONFIG.initialPositionPercent * level.addRatio
-            );
-            
-            if (dcaQty > 0) {
-              console.log(`💰 IMMEDIATE DCA ${position.dcaCount + 1} TRIGGERED: ${symbol} | Level: ${level.priceChangePercent}% | Current: ${priceChange.toFixed(2)}%`);
-
-              const dcaOrderId = `dca_${symbol}_${level.priceChangePercent}_${Date.now()}`;
-              this.pendingDcaOrders.set(dcaOrderId, {
-                symbol,
-                level: i,
-                quantity: dcaQty,
-                timestamp: Date.now()
-              });
-              
-              const success = await this.addToPosition(symbol, dcaQty, 'SHORT', `DCA_${position.signalType}`);
-              
-              if (success) {
-                const newTotalQty = position.totalQty + dcaQty;
-                position.averagePrice = (position.averagePrice * position.totalQty + currentPrice * dcaQty) / newTotalQty;
-                position.totalQty = newTotalQty;
-                position.positionSize = newTotalQty;
-                
-                position.dcaCount++;
-                level.executed = true;
-                
-                console.log(`✅ IMMEDIATE DCA ${position.dcaCount} EXECUTED: ${symbol} | Added ${dcaQty} contracts | Avg Price: ${position.averagePrice.toFixed(6)}`);
-
-                this.pendingDcaOrders.delete(dcaOrderId);
-                break;
-              } else {
-                console.log(`❌ IMMEDIATE DCA FAILED: ${symbol} | Could not add position`);
-                this.pendingDcaOrders.delete(dcaOrderId);
-              }
-            }
-          }
-        }
+    const remainingQty = position.totalQty - position.closedAmount;
+    
+    for (let i = 0; i < position.takeProfitLevels.length; i++) {
+      if (!position.takeProfitLevels[i].executed) {
+        const levelQty = remainingQty * position.takeProfitLevels[i].closeRatio;
+        position.takeProfitLevels[i].quantity = levelQty;
       }
-    } catch (error) {
-      console.log(`⚠️ Immediate DCA error for ${symbol}`);
+    }
+
+    for (let i = 0; i < position.stopLossLevels.length; i++) {
+      if (!position.stopLossLevels[i].executed) {
+        const levelQty = remainingQty * position.stopLossLevels[i].closeRatio;
+        position.stopLossLevels[i].quantity = levelQty;
+      }
+    }
+
+    position.sltpRecalculated = true;
+  }
+
+  private recalculateSLTPAfterPartialClose(position: PositionData): void {
+    if (position.isLowCap) return;
+    
+    const remainingQty = position.totalQty - position.closedAmount;
+    
+    for (let i = 0; i < position.takeProfitLevels.length; i++) {
+      if (!position.takeProfitLevels[i].executed && position.originalTakeProfitLevels) {
+        const originalRatio = position.originalTakeProfitLevels[i].closeRatio;
+        position.takeProfitLevels[i].quantity = remainingQty * originalRatio;
+      }
+    }
+    
+    for (let i = 0; i < position.stopLossLevels.length; i++) {
+      if (!position.stopLossLevels[i].executed && position.originalStopLossLevels) {
+        const originalRatio = position.originalStopLossLevels[i].closeRatio;
+        position.stopLossLevels[i].quantity = remainingQty * originalRatio;
+      }
     }
   }
 
   private async checkTrailingStopLoss(symbol: string, position: PositionData, currentPrice: number): Promise<void> {
-    if (!STRATEGY_CONFIG.trailingStopLoss.enabled || !position.trailingStopLoss) return;
+    if (!STRATEGY_CONFIG.trailingStopLoss.enabled || !position.trailingStopLoss || position.dcaCount === 0) {
+      return;
+    }
 
     const profitData = await this.calculateProfitAndPriceChange(position, currentPrice);
 
@@ -1525,36 +2004,31 @@ class DualModeStrategyBot {
       position.trailingStopLoss.activationPrice = currentPrice;
       position.trailingStopLoss.currentStopPrice = currentPrice * (1 + STRATEGY_CONFIG.trailingStopLoss.trailDistancePercent / 100);
       position.trailingStopLoss.highestProfit = profitData.priceChangePercent;
-      
-      console.log(`🛡️ TRAILING SL ACTIVATED: ${symbol} | Activation: ${STRATEGY_CONFIG.trailingStopLoss.activationProfitPercent}% | Current Stop: ${position.trailingStopLoss.currentStopPrice}`);
     }
+    
     if (position.trailingStopLoss.activated) {
       if (profitData.priceChangePercent < position.trailingStopLoss.highestProfit) {
         position.trailingStopLoss.highestProfit = profitData.priceChangePercent;
         const newStopPrice = currentPrice * (1 + STRATEGY_CONFIG.trailingStopLoss.trailDistancePercent / 100);
         if (newStopPrice < position.trailingStopLoss.currentStopPrice) {
           position.trailingStopLoss.currentStopPrice = newStopPrice;
-          console.log(`🛡️ TRAILING SL UPDATED: ${symbol} | New Stop: ${position.trailingStopLoss.currentStopPrice} | Profit: ${profitData.priceChangePercent.toFixed(2)}%`);
         }
       }
 
       if (currentPrice >= position.trailingStopLoss.currentStopPrice) {
         const remainingQty = position.positionSize - position.closedAmount;
         if (remainingQty > 0) {
-          console.log(`🚨 TRAILING SL TRIGGERED: ${symbol} | Current: ${currentPrice} | Stop: ${position.trailingStopLoss.currentStopPrice} | Profit: ${profitData.priceChangePercent.toFixed(2)}%`);
+          console.log(`🛑 TRAILING SL TRIGGERED: ${symbol} | Current: ${currentPrice} | Stop: ${position.trailingStopLoss.currentStopPrice}`);
           
           const closeSuccess = await this.closePosition(symbol, remainingQty, 'SHORT', `TRAILING_SL`, position.positionId);
           if (closeSuccess) {
             position.closedAmount += remainingQty;
-            console.log(`✅ TRAILING SL EXECUTED: ${symbol} | Closed ${remainingQty} contracts`);
             
             if (position.closedAmount >= position.positionSize) {
-              this.positions.delete(symbol);
-              this.activePositionMonitoring.delete(symbol);
+              this.cleanupPosition(symbol);
               return;
             }
           } else {
-             console.log(`❌ TRAILING SL EXECUTION FAILED, CLOSE ALL ACTIVATED for ${symbol}`);
             return;
           }
         }
@@ -1564,6 +2038,7 @@ class DualModeStrategyBot {
 
   private async checkImmediateSLTP(symbol: string, position: PositionData, currentPrice: number): Promise<void> {
     const profitData = await this.calculateProfitAndPriceChange(position, currentPrice);
+    
     for (let i = 0; i < position.takeProfitLevels.length; i++) {
       const level = position.takeProfitLevels[i];
       if (!level.executed) {
@@ -1571,29 +2046,27 @@ class DualModeStrategyBot {
 
         if (shouldTP) {
           const remainingQty = position.positionSize - position.closedAmount;
-          let closeQty = remainingQty * level.closeRatio;
+          let closeQty = level.quantity || remainingQty * level.closeRatio;
           
           const contractInfo = await this.getContractInfo(symbol);
           closeQty = this.roundVolume(closeQty, contractInfo.volumePrecision);
           closeQty = Math.min(closeQty, remainingQty);
           
           if (closeQty > 0) {
-            console.log(`🎯 IMMEDIATE TP ${i+1} TRIGGERED: ${symbol} | Target: ${level.priceChangePercent}% | Current: ${profitData.priceChangePercent.toFixed(2)}%`);
+            console.log(`🎯 TP ${i+1} TRIGGERED: ${symbol} | Target: ${level.priceChangePercent}% | Current: ${profitData.priceChangePercent.toFixed(2)}%`);
             
             const closeSuccess = await this.closePosition(symbol, closeQty, 'SHORT', `TP${i+1}`, position.positionId);
             if (closeSuccess) {
               position.closedAmount += closeQty;
               level.executed = true;
 
-              console.log(`✅ IMMEDIATE TP ${i+1} EXECUTED: ${symbol} | Closed ${closeQty}/${remainingQty} contracts`);
-
+              this.recalculateSLTPAfterPartialClose(position);
+              
               if (position.closedAmount >= position.positionSize) {
-                this.positions.delete(symbol);
-                this.activePositionMonitoring.delete(symbol);
+                this.cleanupPosition(symbol);
                 return;
               }
             } else {
-             console.log(`❌ TP ${i+1} EXECUTION FAILED, CLOSE ALL ACTIVATED for ${symbol}`);
               return;
             }
           }
@@ -1608,29 +2081,27 @@ class DualModeStrategyBot {
 
         if (shouldSL) {
           const remainingQty = position.positionSize - position.closedAmount;
-          let closeQty = remainingQty * level.closeRatio;
+          let closeQty = level.quantity || remainingQty * level.closeRatio;
           
           const contractInfo = await this.getContractInfo(symbol);
           closeQty = this.roundVolume(closeQty, contractInfo.volumePrecision);
           closeQty = Math.min(closeQty, remainingQty);
           
           if (closeQty > 0) {
-            console.log(`🛑 IMMEDIATE SL ${i+1} TRIGGERED: ${symbol} | Stop: ${level.priceChangePercent}% | Current: ${profitData.priceChangePercent.toFixed(2)}%`);
+            console.log(`🛑 SL ${i+1} TRIGGERED: ${symbol} | Stop: ${level.priceChangePercent}% | Current: ${profitData.priceChangePercent.toFixed(2)}%`);
             
             const closeSuccess = await this.closePosition(symbol, closeQty, 'SHORT', `SL${i+1}`, position.positionId);
             if (closeSuccess) {
               position.closedAmount += closeQty;
               level.executed = true;
 
-              console.log(`✅ IMMEDIATE SL ${i+1} EXECUTED: ${symbol} | Closed ${closeQty}/${remainingQty} contracts`);
-
+              this.recalculateSLTPAfterPartialClose(position);
+              
               if (position.closedAmount >= position.positionSize) {
-                this.positions.delete(symbol);
-                this.activePositionMonitoring.delete(symbol);
+                this.cleanupPosition(symbol);
                 return;
               }
             } else {
-              console.log(`❌ SL ${i+1} EXECUTION FAILED, CLOSE ALL ACTIVATED for ${symbol}`);
               return;
             }
           }
@@ -1663,7 +2134,6 @@ class DualModeStrategyBot {
       const ticker = await client.getTicker(formattedSymbol) as any;
       return ticker.data.lastPrice;
     } catch (error: any) {
-      console.log(`⚠️ Failed to get current price for ${symbol}`);
       return 0;
     }
   }
@@ -1679,7 +2149,6 @@ class DualModeStrategyBot {
       }
       return [];
     } catch (error) {
-      console.log('⚠️ Failed to get current positions');
       return [];
     }
   }
@@ -1711,11 +2180,10 @@ class DualModeStrategyBot {
         if (realPosition && !position.realPositionId) {
           position.realPositionId = realPosition.id?.toString() || 
                                    realPosition.positionId?.toString();
-          console.log(`✅ UPDATED REAL POSITION ID: ${symbol} -> ${position.realPositionId}`);
         }
       }
     } catch (error) {
-      console.log('⚠️ Error updating real position IDs');
+      // Silent error
     }
   }
 
@@ -1764,7 +2232,6 @@ class DualModeStrategyBot {
 
       return midCapSymbols;
     } catch (error: any) {
-      console.log('⚠️ Failed to get future pairs');
       return [];
     }
   }
@@ -1778,10 +2245,8 @@ class DualModeStrategyBot {
     this.lastLowCapScan = now;
     
     const symbols = await this.getAllFuturePairs();
-    console.log(`🔍 Scanning ${symbols.length} symbols for LowCap Kill Long signals...`);
 
     const batchSize = 3;
-    let signalsFound = 0;
 
     for (let i = 0; i < symbols.length; i += batchSize) {
       const batch = symbols.slice(i, i + batchSize);
@@ -1802,7 +2267,7 @@ class DualModeStrategyBot {
             currentPrice: indicators.currentPrice,
             pumpPercent: indicators.pumpPercent || 0,
             volumeSpike: indicators.volumeSpike,
-            rsi: indicators.rsi,
+            marketMomentum: indicators.marketMomentum,
             killLongStrength: indicators.killLongStrength || 0,
             timestamp: now,
             reason: indicators.killLongReason || '',
@@ -1816,7 +2281,6 @@ class DualModeStrategyBot {
             hasKillLongSignal: true
           };
 
-          signalsFound++;
           return killLongSignal;
 
         } catch (error) {
@@ -1828,7 +2292,7 @@ class DualModeStrategyBot {
       batchResults.forEach(signal => {
         if (signal) {
           this.lowCapKillLongSignals.set(signal.symbol, signal);
-          console.log(`🎯 LOWCAP KILL LONG DETECTED: ${signal.symbol} | Pump: ${signal.pumpPercent.toFixed(1)}% | Strength: ${(signal.killLongStrength * 100).toFixed(0)}% | Reason: ${signal.reason}`);
+          console.log(`🎯 LOWCAP KILL LONG: ${signal.symbol} | Pump: ${signal.pumpPercent.toFixed(1)}% | Strength: ${(signal.killLongStrength * 100).toFixed(0)}%`);
         }
       });
       if (this.lowCapKillLongSignals.size > 10) {
@@ -1842,11 +2306,8 @@ class DualModeStrategyBot {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
-
-    if (signalsFound > 0) {
-      console.log(`✅ Found ${signalsFound} new LowCap Kill Long signals`);
-    }
   }
+
   async enterLowCapKillLongPositions(): Promise<void> {
     if (this.lowCapKillLongSignals.size === 0) return;
 
@@ -1876,7 +2337,7 @@ class DualModeStrategyBot {
 
         if (positionSize <= 0) continue;
 
-        console.log(`🚀 ENTERING LOWCAP KILL LONG: ${symbol} | Pump: ${signal.pumpPercent.toFixed(1)}% | Strength: ${(signal.killLongStrength * 100).toFixed(0)}%`);
+        console.log(`🚀 ENTERING LOWCAP KILL LONG: ${symbol} | Pump: ${signal.pumpPercent.toFixed(1)}%`);
 
         const openResult = await this.openPosition(
           symbol, 
@@ -1891,10 +2352,10 @@ class DualModeStrategyBot {
             entryPrice: currentPrice,
             positionSize: positionSize,
             takeProfitLevels: [
-              { priceChangePercent: -LOWCAP_KILL_LONG_CONFIG.takeProfit, closeRatio: 1.0, executed: false }
+              { priceChangePercent: -LOWCAP_KILL_LONG_CONFIG.takeProfit, closeRatio: 1.0, executed: false, quantity: positionSize }
             ],
             stopLossLevels: [
-              { priceChangePercent: LOWCAP_KILL_LONG_CONFIG.stopLoss, closeRatio: 1.0, executed: false }
+              { priceChangePercent: LOWCAP_KILL_LONG_CONFIG.stopLoss, closeRatio: 1.0, executed: false, quantity: positionSize }
             ],
             dcaLevels: [],
             timestamp: Date.now(),
@@ -1916,23 +2377,24 @@ class DualModeStrategyBot {
               highestProfit: 0,
               activated: false
             } : undefined,
-            pendingDcaOrders: new Map()
+            pendingDcaOrders: new Map(),
+            sltpRecalculated: false,
+            consecutiveDcaCount: 0,
+            aggressiveDcaMode: false,
+            totalDcaVolume: 0,
+            maxDcaVolume: 0
           };
 
           this.positions.set(symbol, position);
           this.lowCapKillLongSignals.delete(symbol);
           enteredCount++;
 
-          console.log(`✅ LOWCAP KILL LONG POSITION OPENED: ${symbol} | Size: ${positionSize} | Entry: ${currentPrice} | TP: ${LOWCAP_KILL_LONG_CONFIG.takeProfit}% | SL: ${LOWCAP_KILL_LONG_CONFIG.stopLoss}%`);
+          console.log(`✅ LOWCAP KILL LONG POSITION: ${symbol} | Size: ${positionSize} | Entry: ${currentPrice}`);
         }
 
       } catch (error) {
-        console.log(`❌ Failed to enter LowCap Kill Long position for ${symbol}`);
+        // Silent error
       }
-    }
-
-    if (enteredCount > 0) {
-      console.log(`✅ Entered ${enteredCount} LowCap Kill Long positions`);
     }
   }
 
@@ -1983,7 +2445,10 @@ class DualModeStrategyBot {
             strengthScore: indicators.strengthScore,
             resistanceLevel: indicators.resistanceLevel,
             supportLevel: indicators.supportLevel,
-            rsi: indicators.rsi,
+            marketMomentum: indicators.marketMomentum,
+            fearGreedIndex: indicators.fearGreedIndex,
+            volumeDivergence: indicators.volumeDivergence,
+            priceMomentum: indicators.priceMomentum,
             ema: indicators.ema,
             atr: indicators.atr,
             priceHistory: indicators.candles.slice(-10).map(c => c.close),
@@ -2051,7 +2516,6 @@ class DualModeStrategyBot {
     if (this.trackingCoins.size === 0) return;
 
     let enteredCount = 0;
-    let removedCount = 0;
 
     for (const [symbol, coinData] of this.trackingCoins.entries()) {
       try {
@@ -2070,12 +2534,15 @@ class DualModeStrategyBot {
         coinData.trendStrength = indicators.trendStrength;
         coinData.trendDirection = indicators.trendDirection;
         coinData.volumeSpike = indicators.volumeSpike;
-        coinData.rsi = indicators.rsi;
+        coinData.marketMomentum = indicators.marketMomentum;
+        coinData.fearGreedIndex = indicators.fearGreedIndex;
+        coinData.volumeDivergence = indicators.volumeDivergence;
+        coinData.priceMomentum = indicators.priceMomentum;
         coinData.ema = indicators.ema;
         coinData.resistanceLevel = indicators.resistanceLevel;
         coinData.supportLevel = indicators.supportLevel;
         coinData.hasEntrySignal = indicators.hasEntrySignal;
-        coinData.signalType = indicators.signalType;
+        coinData.signalType= indicators.signalType;
         coinData.strengthScore = indicators.strengthScore;
         coinData.fakePumpSignal = indicators.fakePumpSignal;
         coinData.fakePumpStrength = indicators.fakePumpStrength;
@@ -2085,33 +2552,25 @@ class DualModeStrategyBot {
         coinData.emaAlignment = indicators.emaAlignment;
 
         if (coinData.hasEntrySignal && coinData.status === 'TRACKING') {
-          console.log(`🎯 DUAL MODE SIGNAL: ${symbol} | ${coinData.signalType} | Vol: ${coinData.dailyVolatility.toFixed(1)}% | Vol24h: $${(coinData.volume24h/1000000).toFixed(1)}M | Trend: ${coinData.trendDirection} (${(coinData.trendStrength*100).toFixed(0)}%)`);
-          
           coinData.status = 'READY_TO_ENTER';
         }
 
         if (coinData.status === 'READY_TO_ENTER') {
-          console.log(`🚀 ENTERING ${coinData.signalType}: ${symbol} | Price: ${currentPrice}`);
+          console.log(`🚀 ENTERING: ${symbol} | ${coinData.signalType}`);
           
           await this.enterPosition(symbol, coinData.signalType);
           coinData.status = 'ENTERED';
           enteredCount++;
           this.trackingCoins.delete(symbol);
-          removedCount++;
         }
         const timeDiff = Date.now() - coinData.timestamp;
         if (timeDiff > 45 * 60 * 1000 && coinData.status === 'TRACKING') {
           this.trackingCoins.delete(symbol);
-          removedCount++;
         }
 
       } catch (error) {
-        console.log(`⚠️ Error tracking ${symbol}`);
+        // Silent error
       }
-    }
-
-    if (enteredCount > 0) {
-      console.log(`✅ Entered ${enteredCount} DUAL MODE positions`);
     }
   }
 
@@ -2123,16 +2582,20 @@ class DualModeStrategyBot {
       if (currentPrice <= 0 || !this.hasMinimumBalance()) return;
 
       let initialQty: number;
+      
+      let positionPercent = STRATEGY_CONFIG.initialPositionPercent;
 
       if (signalType.includes('FAKE_PUMP')) {
-        initialQty = await this.calculatePositionSize(symbol, STRATEGY_CONFIG.initialPositionPercent * 1.3);
+        positionPercent = STRATEGY_CONFIG.initialPositionPercent;
       } else if (signalType.includes('STRONG_DOWNTREND')) {
-        initialQty = await this.calculatePositionSize(symbol, STRATEGY_CONFIG.initialPositionPercent * 1.1);
+        positionPercent = STRATEGY_CONFIG.initialPositionPercent;
       } else if (signalType.includes('LOWCAP_KILL_LONG')) {
-        initialQty = await this.calculatePositionSize(symbol, LOWCAP_KILL_LONG_CONFIG.positionSizePercent);
-      } else {
-        initialQty = await this.calculatePositionSize(symbol, STRATEGY_CONFIG.initialPositionPercent);
+        positionPercent = LOWCAP_KILL_LONG_CONFIG.positionSizePercent;
+      } else if (signalType.includes('POSITIVE_DCA')) {
+        positionPercent = STRATEGY_CONFIG.initialPositionPercent;
       }
+
+      initialQty = await this.calculatePositionSize(symbol, positionPercent);
 
       if (initialQty <= 0) return;
 
@@ -2142,21 +2605,40 @@ class DualModeStrategyBot {
       const actualPrice = await this.getCurrentPrice(symbol);
       const isLowCap = signalType.includes('LOWCAP_KILL_LONG');
       
+      const takeProfitLevels: TakeProfitLevel[] = isLowCap ? 
+        [{ priceChangePercent: -LOWCAP_KILL_LONG_CONFIG.takeProfit, closeRatio: 1.0, executed: false, quantity: initialQty }] :
+        STRATEGY_CONFIG.takeProfitLevels.map(level => ({ 
+          ...level, 
+          executed: false,
+          quantity: initialQty * level.closeRatio
+        }));
+      
+      const stopLossLevels: StopLossLevel[] = isLowCap ?
+        [{ priceChangePercent: LOWCAP_KILL_LONG_CONFIG.stopLoss, closeRatio: 1.0, executed: false, quantity: initialQty }] :
+        STRATEGY_CONFIG.stopLossLevels.map(level => ({ 
+          ...level, 
+          executed: false,
+          quantity: initialQty * level.closeRatio
+        }));
+
+      let dcaLevels: DcaLevel[] = [];
+      if (!isLowCap) {
+        dcaLevels = STRATEGY_CONFIG.dcaLevels.map(level => ({ 
+          ...level, 
+          executed: false,
+          condition: level.condition as any
+        }));
+      }
+
+      const maxDcaVolume = await this.calculatePositionSize(symbol, STRATEGY_CONFIG.positiveDCA.pullbackDCA.maxTotalDcaPercent);
+
       const position: PositionData = {
         symbol,
         entryPrice: actualPrice,
         positionSize: initialQty,
-        takeProfitLevels: isLowCap ? 
-          [{ priceChangePercent: -LOWCAP_KILL_LONG_CONFIG.takeProfit, closeRatio: 1.0, executed: false }] :
-          STRATEGY_CONFIG.takeProfitLevels.map(level => ({ ...level, executed: false })),
-        stopLossLevels: isLowCap ?
-          [{ priceChangePercent: LOWCAP_KILL_LONG_CONFIG.stopLoss, closeRatio: 1.0, executed: false }] :
-          STRATEGY_CONFIG.stopLossLevels.map(level => ({ ...level, executed: false })),
-        dcaLevels: isLowCap ? [] : STRATEGY_CONFIG.dcaLevels.map(level => ({ 
-          ...level, 
-          executed: false,
-          condition: level.condition as 'RESISTANCE' | 'EMA_RESISTANCE' | 'FIBONACCI' | 'BASIC'
-        })),
+        takeProfitLevels,
+        stopLossLevels,
+        dcaLevels,
         timestamp: Date.now(),
         initialQty,
         closedAmount: 0,
@@ -2176,186 +2658,230 @@ class DualModeStrategyBot {
           highestProfit: 0,
           activated: false
         } : undefined,
-        pendingDcaOrders: new Map()
+        pendingDcaOrders: new Map(),
+        sltpRecalculated: false,
+        consecutiveDcaCount: 0,
+        aggressiveDcaMode: false,
+        totalDcaVolume: 0,
+        maxDcaVolume
       };
 
       this.positions.set(symbol, position);
 
+      this.startDCARealTimeMonitoring(symbol, position);
+
+      console.log(`✅ POSITION OPENED: ${symbol} | Size: ${initialQty} (${(positionPercent * 100).toFixed(1)}%) | Entry: ${actualPrice} | Signal: ${signalType}`);
+
     } catch (error) {
-      console.log(`❌ ENTRY FAILED: ${symbol}`);
+      // Silent error
     }
   }
 
-  async executeDCA(symbol: string, position: PositionData, currentPrice: number): Promise<void> {
-    if (position.dcaCount >= STRATEGY_CONFIG.maxDcaTimes || position.isLowCap) return;
+  private cleanupPosition(symbol: string): void {
+    this.positions.delete(symbol);
+    this.activePositionMonitoring.delete(symbol);
+    this.stopDCARealTimeMonitoring(symbol);
+    this.lastDcaCheck.delete(symbol);
+  }
 
-    try {
-      const indicators = await this.calculateDualModeIndicators(symbol);
-      
-      const dcaCheck = this.checkPositiveDcaConditions(
-        symbol, 
-        position, 
-        currentPrice, 
-        indicators,
-        indicators.candles
-      );
-
-      if (!dcaCheck.shouldDCA) {
+  private startDCARealTimeMonitoring(symbol: string, position: PositionData): void {
+    const monitorInterval = setInterval(async () => {
+      if (!this.positions.has(symbol)) {
+        clearInterval(monitorInterval);
         return;
       }
 
-      console.log(`🎯 DCA SIGNAL DETECTED: ${symbol} | Reason: ${dcaCheck.dcaReason} | Current Price: ${currentPrice} | Avg Price: ${position.averagePrice} | PositionID: ${position.positionId}`);
-
-      for (let i = 0; i < position.dcaLevels.length; i++) {
-        const level = position.dcaLevels[i];
-        
-        if (!level.executed) {
-          const priceChange = this.calculatePriceChangePercent(position.averagePrice, currentPrice);
-          
-          const shouldExecute = priceChange >= level.priceChangePercent;
-
-          if (shouldExecute) {
-            const dcaQty = await this.calculatePositionSize(
-              symbol, 
-              STRATEGY_CONFIG.initialPositionPercent * level.addRatio
-            );
-            
-            if (dcaQty > 0) {
-              console.log(`💰 ATTEMPTING DCA ${position.dcaCount + 1}: ${symbol} | ${dcaQty} contracts | Level: ${level.priceChangePercent}% | Condition: ${level.condition} | PositionID: ${position.positionId}`);
-              const dcaOrderId = `dca_${symbol}_${level.priceChangePercent}_${Date.now()}`;
-              this.pendingDcaOrders.set(dcaOrderId, {
-                symbol,
-                level: i,
-                quantity: dcaQty,
-                timestamp: Date.now()
-              });
-              
-              const success = await this.addToPosition(symbol, dcaQty, 'SHORT', `DCA_${position.signalType}`);
-              
-              if (success) {
-                const newTotalQty = position.totalQty + dcaQty;
-                position.averagePrice = (position.averagePrice * position.totalQty + currentPrice * dcaQty) / newTotalQty;
-                position.totalQty = newTotalQty;
-                position.positionSize = newTotalQty;
-                
-                position.dcaCount++;
-                level.executed = true;
-                
-                console.log(`✅ DCA ${position.dcaCount} EXECUTED: ${symbol} | PositionID: ${position.positionId}`);
-                console.log(`   ↳ Added ${dcaQty} contracts | Avg Price: ${position.averagePrice.toFixed(6)}`);
-                console.log(`   ↳ Reason: ${dcaCheck.dcaReason} | Current Price: ${currentPrice}`);
-                console.log(`   ↳ RSI: ${indicators.rsi.toFixed(1)} | Trend: ${indicators.trendDirection}`);
-
-                this.pendingDcaOrders.delete(dcaOrderId);
-                break;
-              } else {
-                console.log(`❌ DCA FAILED: ${symbol} | Could not add position | PositionID: ${position.positionId}`);
-                this.pendingDcaOrders.delete(dcaOrderId);
-              }
-            }
-          }
+      try {
+        const currentPosition = this.positions.get(symbol);
+        if (!currentPosition || currentPosition.dcaCount >= STRATEGY_CONFIG.maxDcaTimes) {
+          clearInterval(monitorInterval);
+          return;
         }
+
+        await this.executeRealTimeDCA(symbol, currentPosition);
+      } catch (error) {
+        // Silent error
       }
+    }, 3000);
+  }
+
+  private stopDCARealTimeMonitoring(symbol: string): void {
+    // The interval is automatically cleared when position is removed
+  }
+
+  async executeRealTimeDCA(symbol: string, position: PositionData): Promise<void> {
+    const now = Date.now();
+    const lastCheck = this.lastDcaCheck.get(symbol) || 0;
+    if (now - lastCheck < 5000) {
+      return;
+    }
+    this.lastDcaCheck.set(symbol, now);
+
+    if (position.dcaCount >= STRATEGY_CONFIG.maxDcaTimes || position.isLowCap) {
+      return;
+    }
+
+    try {
+      const currentPrice = await this.getCurrentPrice(symbol);
+      if (currentPrice <= 0) return;
+
+      const indicators = await this.calculateDualModeIndicators(symbol);
+      
+      await this.checkRegularDCA(symbol, position, currentPrice, indicators);
+      await this.checkPullbackDCA(symbol, position, currentPrice, indicators);
+      await this.checkAggressiveDCA(symbol, position, currentPrice, indicators);
+
     } catch (error) {
-      console.log(`⚠️ DCA Error for ${symbol}`);
+      // Silent error
     }
   }
 
-  private checkPositiveDcaConditions(
+  private async checkRegularDCA(
+    symbol: string, 
+    position: PositionData, 
+    currentPrice: number,
+    indicators: any
+  ): Promise<void> {
+    const priceChange = this.calculatePriceChangePercent(position.averagePrice, currentPrice);
+    
+    for (let i = 0; i < position.dcaLevels.length; i++) {
+      const level = position.dcaLevels[i];
+      if (!level.executed && priceChange >= level.priceChangePercent) {
+        console.log(`🎯 REGULAR DCA SIGNAL: ${symbol} | Level ${i+1} | Price Change: ${priceChange.toFixed(2)}%`);
+        
+        const dcaQty = await this.calculatePositionSize(
+          symbol, 
+          STRATEGY_CONFIG.initialPositionPercent * level.addRatio
+        );
+        
+        if (dcaQty > 0 && await this.executeDCAOrder(symbol, dcaQty, position, currentPrice, `REGULAR_DCA_LEVEL_${i+1}`)) {
+          level.executed = true;
+          return;
+        }
+      }
+    }
+  }
+
+  private async checkPullbackDCA(
     symbol: string,
     position: PositionData,
     currentPrice: number,
-    indicators: any,
-    candles: SimpleCandle[]
-  ): { shouldDCA: boolean; dcaReason: string } {
+    indicators: any
+  ): Promise<void> {
+    const pullbackSignal = this.detectPullbackInDowntrend(
+      indicators.candles,
+      currentPrice,
+      indicators.marketMomentum,
+      indicators.trendDirection,
+      indicators.trendStrength,
+      indicators.ema
+    );
+
+    if (pullbackSignal.hasPullback && pullbackSignal.pullbackStrength > 0.7) {
+      console.log(`🎯 PULLBACK DCA SIGNAL: ${symbol} | Strength: ${(pullbackSignal.pullbackStrength * 100).toFixed(0)}%`);
+      
+      const pullbackQty = await this.calculatePositionSize(symbol, STRATEGY_CONFIG.initialPositionPercent);
+
+      await this.executeDCAOrder(symbol, pullbackQty, position, currentPrice, `PULLBACK_DCA_${pullbackSignal.reason}`);
+    }
+  }
+
+  private async checkAggressiveDCA(
+    symbol: string,
+    position: PositionData,
+    currentPrice: number,
+    indicators: any
+  ): Promise<void> {
+    if (indicators.trendStrength > 0.8 && 
+        indicators.trendDirection === 'DOWNTREND' &&
+        position.dcaCount < 1) {
+      
+      const priceChange = this.calculatePriceChangePercent(position.averagePrice, currentPrice);
+      
+      if (priceChange >= 0.5 && priceChange <= 2.0) {
+        console.log(`🎯 AGGRESSIVE DCA SIGNAL: ${symbol} | Trend Strength: ${(indicators.trendStrength * 100).toFixed(0)}%`);
+        
+        const aggressiveQty = await this.calculatePositionSize(symbol, STRATEGY_CONFIG.initialPositionPercent);
+        
+        await this.executeDCAOrder(symbol, aggressiveQty, position, currentPrice, 'AGGRESSIVE_DCA_STRONG_TREND');
+      }
+    }
+  }
+
+  private async executeDCAOrder(
+    symbol: string,
+    dcaQty: number,
+    position: PositionData,
+    currentPrice: number,
+    reason: string
+  ): Promise<boolean> {
+    if (!this.validateDCAConditions(symbol, position, dcaQty)) {
+      return false;
+    }
+
+    console.log(`💰 EXECUTING DCA: ${symbol} | Quantity: ${dcaQty} | Reason: ${reason}`);
     
-    const priceChange = this.calculatePriceChangePercent(position.averagePrice, currentPrice);
+    const success = await this.addToPosition(symbol, dcaQty, 'SHORT', reason);
     
-    if (indicators.trendDirection !== 'DOWNTREND') {
-      return { shouldDCA: false, dcaReason: 'TREND_CHANGED' };
+    if (success) {
+      await this.updatePositionAfterDCA(symbol, position, dcaQty, currentPrice, reason);
+      return true;
     }
-
-    const currentVolume = candles[candles.length - 1]?.volume || 0;
-    const avgVolume = candles.slice(-10).reduce((sum, c) => sum + c.volume, 0) / 10;
-    const volumeRatio = avgVolume > 0 ? currentVolume / avgVolume : 1;
     
-    if (volumeRatio > 1) {
-      return { shouldDCA: false, dcaReason: 'VOLUME_TOO_HIGH' };
+    return false;
+  }
+
+  private validateDCAConditions(symbol: string, position: PositionData, dcaQty: number): boolean {
+    if (position.dcaCount >= STRATEGY_CONFIG.maxDcaTimes) {
+      return false;
     }
 
-    const recentHigh = Math.max(...candles.slice(-20).map(c => c.high));
-    const recentLow = Math.min(...candles.slice(-20).map(c => c.low));
-    const fibLevels = this.calculateFibonacciLevels(recentHigh, recentLow);
-
-    const resistanceDistance = Math.abs(indicators.resistanceLevel - currentPrice) / indicators.resistanceLevel;
-    if (resistanceDistance <= 0.02) {
-      return { shouldDCA: true, dcaReason: 'RESISTANCE_TOUCH' };
+    if (position.totalDcaVolume + dcaQty > position.maxDcaVolume) {
+      return false;
     }
 
-    const emaDistance = Math.abs(indicators.ema - currentPrice) / indicators.ema;
-    if (emaDistance <= 0.015 && currentPrice < indicators.ema) {
-      return { shouldDCA: true, dcaReason: 'EMA_RESISTANCE' };
+    const now = Date.now();
+    if (position.lastDcaTime && (now - position.lastDcaTime) < 30000) {
+      return false;
     }
 
-    const fib382Distance = Math.abs(fibLevels.level382 - currentPrice) / fibLevels.level382;
-    const fib500Distance = Math.abs(fibLevels.level500 - currentPrice) / fibLevels.level500;
-    const fib618Distance = Math.abs(fibLevels.level618 - currentPrice) / fibLevels.level618;
-
-    if (fib382Distance <= 0.015 || fib500Distance <= 0.015 || fib618Distance <= 0.015) {
-      return { shouldDCA: true, dcaReason: 'FIBONACCI_LEVEL' };
+    if (position.consecutiveDcaCount >= STRATEGY_CONFIG.positiveDCA.pullbackDCA.maxConsecutiveDCA) {
+      return false;
     }
 
-    const lastCandle = candles[candles.length - 1];
-    const prevCandle = candles[candles.length - 2];
+    return true;
+  }
+
+  private async updatePositionAfterDCA(
+    symbol: string,
+    position: PositionData,
+    dcaQty: number,
+    currentPrice: number,
+    reason: string
+  ): Promise<void> {
+    const newTotalQty = position.totalQty + dcaQty;
+    position.averagePrice = (position.averagePrice * position.totalQty + currentPrice * dcaQty) / newTotalQty;
+    position.totalQty = newTotalQty;
+    position.positionSize = newTotalQty;
     
-    const upperShadow = lastCandle.high - Math.max(lastCandle.open, lastCandle.close);
-    const bodySize = Math.abs(lastCandle.close - lastCandle.open);
-    const isRejectionCandle = upperShadow > (bodySize * 2) && (bodySize / lastCandle.open) < 0.01;
+    position.dcaCount++;
+    position.lastDcaTime = Date.now();
+    position.totalDcaVolume += dcaQty;
 
-    if (isRejectionCandle && priceChange > 2) {
-      return { shouldDCA: true, dcaReason: 'PRICE_REJECTION' };
+    if (position.trailingStopLoss) {
+      position.trailingStopLoss.activated = false;
+      position.trailingStopLoss.activationPrice = 0;
+      position.trailingStopLoss.currentStopPrice = 0;
+      position.trailingStopLoss.highestProfit = 0;
     }
 
-    return { shouldDCA: false, dcaReason: 'NO_CONDITION_MET' };
+    this.recalculateSLTPAfterDCA(position);
+    
+    console.log(`✅ DCA ${position.dcaCount} EXECUTED: ${symbol} | New Avg: ${position.averagePrice.toFixed(6)} | Reason: ${reason}`);
   }
 
   async scanDcaOpportunities(): Promise<void> {
-    const now = Date.now();
-    if (now - this.lastDcaScan < 30000) return;
-    
-    this.lastDcaScan = now;
-
-    if (this.positions.size === 0) return;
-
-    for (const [symbol, position] of this.positions.entries()) {
-      try {
-        if (position.dcaCount >= STRATEGY_CONFIG.maxDcaTimes || position.isLowCap) continue;
-
-        const currentPrice = await this.getCurrentPrice(symbol);
-        if (currentPrice <= 0) continue;
-
-        const indicators = await this.calculateDualModeIndicators(symbol);
-        
-        const dcaCheck = this.checkPositiveDcaConditions(
-          symbol, 
-          position, 
-          currentPrice, 
-          indicators,
-          indicators.candles
-        );
-
-        if (dcaCheck.shouldDCA) {
-          console.log(`🎯 DCA OPPORTUNITY: ${symbol} | Reason: ${dcaCheck.dcaReason} | PositionID: ${position.positionId}`);
-          console.log(`   ↳ Current Price: ${currentPrice} | Avg Price: ${position.averagePrice}`);
-          console.log(`   ↳ RSI: ${indicators.rsi.toFixed(1)} | Trend: ${indicators.trendDirection}`);
-          
-          await this.executeDCA(symbol, position, currentPrice);
-        }
-
-      } catch (error) {
-        console.log(`⚠️ DCA Scan Error for ${symbol}`);
-      }
-    }
+    // This is now handled by real-time DCA monitor
   }
 
   async managePositions(): Promise<void> {
@@ -2380,7 +2906,7 @@ class DualModeStrategyBot {
 
             if (shouldTP) {
               const remainingQty = position.positionSize - position.closedAmount;
-              let closeQty = remainingQty * level.closeRatio;
+              let closeQty = level.quantity || remainingQty * level.closeRatio;
               
               const contractInfo = await this.getContractInfo(symbol);
               closeQty = this.roundVolume(closeQty, contractInfo.volumePrecision);
@@ -2412,7 +2938,7 @@ class DualModeStrategyBot {
 
             if (shouldSL) {
               const remainingQty = position.positionSize - position.closedAmount;
-              let closeQty = remainingQty * level.closeRatio;
+              let closeQty = level.quantity || remainingQty * level.closeRatio;
               
               const contractInfo = await this.getContractInfo(symbol);
               closeQty = this.roundVolume(closeQty, contractInfo.volumePrecision);
@@ -2442,13 +2968,12 @@ class DualModeStrategyBot {
         }
 
       } catch (error) {
-        console.log(`⚠️ Error managing position ${symbol}`);
+        // Silent error
       }
     }
 
     closedPositions.forEach(symbol => {
-      this.positions.delete(symbol);
-      this.activePositionMonitoring.delete(symbol);
+      this.cleanupPosition(symbol);
     });
   }
 
@@ -2465,7 +2990,6 @@ class DualModeStrategyBot {
     console.log(`   💼 Positions: ${this.positions.size}`);
     console.log(`   📈 Orders: ${this.totalOrders}`);
     console.log(`   💵 PnL: ${this.totalProfit.toFixed(2)} USDT`);
-    console.log(`   🔄 Pending DCA Orders: ${this.pendingDcaOrders.size}`);
     
     if (this.positions.size > 0) {
       console.log(`\n💼 ACTIVE POSITIONS:`);
@@ -2485,15 +3009,7 @@ class DualModeStrategyBot {
           dcaInfo = ` | DCA: ${position.dcaCount}/${STRATEGY_CONFIG.maxDcaTimes}`;
         }
         
-        console.log(`   ${symbol}: ${status} $${profitData.profit.toFixed(2)} (${profitData.priceChangePercent.toFixed(1)}%) | Closed: ${closedPercent}%${dcaInfo}${trailingInfo} | ${position.signalType}`);
-      }
-    }
-    
-    if (this.pendingDcaOrders.size > 0) {
-      console.log(`\n⏳ PENDING DCA ORDERS:`);
-      for (const [orderId, order] of this.pendingDcaOrders.entries()) {
-        const age = Date.now() - order.timestamp;
-        console.log(`   ${order.symbol} | Level: ${order.level + 1} | Qty: ${order.quantity} | Age: ${(age / 1000).toFixed(0)}s`);
+        console.log(`   ${symbol}: ${status} $${profitData.profit.toFixed(2)} (${profitData.priceChangePercent.toFixed(1)}%) | Closed: ${closedPercent}%${dcaInfo}${trailingInfo}`);
       }
     }
     console.log('');
@@ -2501,9 +3017,12 @@ class DualModeStrategyBot {
 
   async run(): Promise<void> {
     console.log('🚀 Starting DUAL MODE STRATEGY BOT');
-    console.log('🎯 REAL-TIME POSITION MONITORING: ENABLED');
-    console.log('💰 DCA ORDER TRACKING: ENABLED');
-    console.log('🛡️ TRAILING STOP LOSS: ENABLED');
+    console.log('🎯 UPDATED CONFIG: Initial Position 7%, 2 DCA Levels (7% each)');
+    console.log('💰 POSITION SIZE: 7% account | DCA: 2x 7%');
+    console.log('📈 TOTAL EXPOSURE: 21% account (7% + 14% DCA)');
+    console.log('🛡️ ENTRY FILTERS: Active - Avoid large drops, long downtrends');
+    console.log('🎯 IMPROVED FAKE PUMP: 3+ candles, <8% drop, NO uptrend required');
+    console.log('🎯 IMPROVED LOWCAP: <20% drop, >60% volume retention');
     
     await this.fetchBinanceSymbols();
     
@@ -2537,8 +3056,6 @@ class DualModeStrategyBot {
         await this.trackTopCoinsRealTime();
         await this.managePositions();
         
-        await this.scanDcaOpportunities();
-        
         await this.scanLowCapCoins();
         await this.enterLowCapKillLongPositions();
         
@@ -2562,9 +3079,9 @@ class DualModeStrategyBot {
     }
     
     console.log(`\n🛑 Bot stopped | Total Orders: ${this.totalOrders} | Total PnL: ${this.totalProfit.toFixed(2)} USDT`);
-    console.log(`📊 Pending DCA Orders cancelled: ${this.pendingDcaOrders.size}`);
   }
 }
+
 const bot = new DualModeStrategyBot();
 
 process.on('SIGINT', () => {
