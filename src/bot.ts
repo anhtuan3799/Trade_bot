@@ -38,7 +38,7 @@ const STRATEGY_CONFIG = {
     { priceChangePercent: 3.0, closeRatio: 0.5 }
   ],
   maxVolume24h: 5000000,
-  minVolume24h: 10000,
+  minVolume24h: 0,
   fakePumpMinPercent: 15,
   volumeSpikeThreshold: 2.5,
   maxActivePositions: 3,
@@ -71,8 +71,10 @@ const STRATEGY_CONFIG = {
     enabled: true,
     minPumpPercent: 15,
     pumpCandles: 10,
-    minRetraceFromPeak: 5,
-    strongRetraceFromPeak: 8,
+    // ĐIỀU KIỆN MỚI: Pump 3 nến cần giảm 5%, pump trên 3 nến cần giảm 3%
+    fastPumpCandles: 3,
+    fastPumpRetraceRequired: 5,
+    slowPumpRetraceRequired: 3,
     volumeSpikeRatio: 2.5,
     requiredSignals: 1,
     minListingDays: 20
@@ -195,6 +197,8 @@ interface PositionData {
   positiveDcaCount: number;
   extendedTpLevels: number[];
   lastPositiveDcaTime?: number;
+  initialStopLossLevels?: StopLossLevel[]; // THÊM: Lưu SL ban đầu
+  adjustedStopLossLevels?: StopLossLevel[]; // THÊM: SL đã điều chỉnh sau DCA
 }
 
 interface CoinTrackingData {
@@ -236,6 +240,8 @@ interface CoinTrackingData {
   consecutiveBearish: boolean;
   confidence: number;
   riskLevel: string;
+  pumpDurationCandles: number;
+  requiredRetracePercent: number;
 }
 
 class OrderManager {
@@ -288,12 +294,14 @@ class FakePumpStrategyBot {
 
   constructor() {
     console.log('🤖 FAKE PUMP STRATEGY BOT - ENHANCED REVERSAL MODE');
-    console.log('🎯 ENTRY: Pump 15% + Reversal 5% từ đỉnh (Telegram Bot Logic)');
-    console.log('📊 PUMP: Trong 10 nến 5m');
-    console.log('💰 DCA: Thêm vào khi giá đi ngược hướng');
+    console.log('🎯 ENTRY: Pump 15% + Reversal từ đỉnh (Điều kiện mới)');
+    console.log('📊 PUMP NHANH (3 nến): Cần giảm 5% từ đỉnh');
+    console.log('📊 PUMP CHẬM (>3 nến): Cần giảm 3% từ đỉnh');
+    console.log('🚫 KHÔNG VÀO LỆNH NẾU RISK LEVEL: HIGH');
+    console.log('💰 DCA: Thêm vào khi giá đi ngược hướng + TÍNH LẠI SL');
     console.log('🚀 DCA DƯƠNG: Nhồi thêm lệnh khi giá giảm mạnh & dời TP xa hơn');
     console.log('⏰ FILTER: Coin phải list ít nhất 20 ngày');
-    console.log('🛡️ Risk Management: Confidence-based position sizing');
+    console.log('🛡️ Risk Management: Confidence-based position sizing + Dynamic SL after DCA');
   }
 
   private async getCoinListingTime(symbol: string): Promise<number> {
@@ -547,6 +555,39 @@ class FakePumpStrategyBot {
     return volatilityScore + volumeScore + fakePumpScore + additionalScore;
   }
 
+  // HÀM MỚI: XÁC ĐỊNH THỜI GIAN PUMP (SỐ NẾN)
+  private calculatePumpDuration(candles: SimpleCandle[], pumpHigh: number): number {
+    if (candles.length < 10) return 0;
+    
+    const recentCandles = candles.slice(-10);
+    
+    // Tìm nến đầu tiên đạt đỉnh pump
+    let pumpStartIndex = -1;
+    for (let i = recentCandles.length - 1; i >= 0; i--) {
+      if (Math.abs(recentCandles[i].high - pumpHigh) / pumpHigh < 0.01) { // Sai số 1%
+        pumpStartIndex = i;
+        break;
+      }
+    }
+    
+    if (pumpStartIndex === -1) return 0;
+    
+    // Tìm nến bắt đầu pump (giá thấp nhất trước khi pump)
+    let pumpLow = recentCandles[pumpStartIndex].low;
+    let startIndex = pumpStartIndex;
+    
+    for (let i = pumpStartIndex - 1; i >= 0; i--) {
+      if (recentCandles[i].low < pumpLow) {
+        pumpLow = recentCandles[i].low;
+        startIndex = i;
+      } else {
+        break;
+      }
+    }
+    
+    return pumpStartIndex - startIndex + 1;
+  }
+
   private detectEnhancedReversalSignal(
     candles: SimpleCandle[], 
     currentPrice: number
@@ -563,6 +604,8 @@ class FakePumpStrategyBot {
     priceUnderMA: boolean;
     consecutiveBearish: boolean;
     peakPrice: number;
+    pumpDurationCandles: number;
+    requiredRetracePercent: number;
   } {
     if (candles.length < 15) {
       return { 
@@ -577,7 +620,9 @@ class FakePumpStrategyBot {
         bearishPatterns: [],
         priceUnderMA: false,
         consecutiveBearish: false,
-        peakPrice: 0
+        peakPrice: 0,
+        pumpDurationCandles: 0,
+        requiredRetracePercent: 0
       };
     }
 
@@ -603,19 +648,25 @@ class FakePumpStrategyBot {
     const last3Candles = last10Candles.slice(-3);
     const consecutiveBearish = last3Candles.every(k => k.close < k.open);
     
+    // TÍNH TOÁN THỜI GIAN PUMP VÀ MỨC GIẢM YÊU CẦU
+    const pumpDurationCandles = this.calculatePumpDuration(candles, highestPrice);
+    const requiredRetracePercent = pumpDurationCandles <= STRATEGY_CONFIG.reversalDetection.fastPumpCandles 
+      ? STRATEGY_CONFIG.reversalDetection.fastPumpRetraceRequired 
+      : STRATEGY_CONFIG.reversalDetection.slowPumpRetraceRequired;
+
     const reasons: string[] = [];
     let confidence = 0;
     let riskLevel = 'HIGH';
+    let reversalType = '';
 
-    const hasReversalSignal = dropFromPeak >= STRATEGY_CONFIG.reversalDetection.minRetraceFromPeak;
-    const hasStrongReversal = dropFromPeak >= STRATEGY_CONFIG.reversalDetection.strongRetraceFromPeak;
-    const hasVolumeSpike = volumeRatio >= STRATEGY_CONFIG.reversalDetection.volumeSpikeRatio;
-    
+    // ĐIỀU KIỆN MỚI: DỰA TRÊN THỜI GIAN PUMP
+    const hasReversalSignal = dropFromPeak >= requiredRetracePercent;
+
     if (!hasReversalSignal) {
       return { 
         hasReversal: false, 
         reversalType: '', 
-        reasons: ['INSUFFICIENT_RETRACE'],
+        reasons: [`INSUFFICIENT_RETRACE_NEED_${requiredRetracePercent}%_GOT_${dropFromPeak.toFixed(1)}%`],
         confidence: 0,
         riskLevel: 'HIGH',
         dropFromPeak,
@@ -624,27 +675,30 @@ class FakePumpStrategyBot {
         bearishPatterns: patternAnalysis.patterns,
         priceUnderMA,
         consecutiveBearish,
-        peakPrice: highestPrice
+        peakPrice: highestPrice,
+        pumpDurationCandles,
+        requiredRetracePercent
       };
     }
 
-    if (hasStrongReversal) confidence += 35;
-    else if (dropFromPeak >= STRATEGY_CONFIG.reversalDetection.minRetraceFromPeak) confidence += 25;
+    // TÍNH CONFIDENCE DỰA TRÊN ĐIỀU KIỆN MỚI
+    if (dropFromPeak >= requiredRetracePercent + 3) confidence += 35;
+    else if (dropFromPeak >= requiredRetracePercent) confidence += 25;
     
     if (patternAnalysis.hasBearishPattern) confidence += 25;
-    if (hasVolumeSpike) confidence += 20;
+    if (volumeRatio >= STRATEGY_CONFIG.reversalDetection.volumeSpikeRatio) confidence += 20;
     if (priceUnderMA) confidence += 15;
     if (consecutiveBearish) confidence += 15;
     
-    let reversalType = '';
+    // XÁC ĐỊNH RISK LEVEL - KHÔNG VÀO LỆNH NẾU RISK HIGH
     if (confidence >= 80) {
-      reversalType = 'CỰC MẠNH 🔥';
+      reversalType = `CỰC MẠNH 🔥 (Pump ${pumpDurationCandles}nến - Cần ${requiredRetracePercent}%)`;
       riskLevel = 'LOW';
     } else if (confidence >= 65) {
-      reversalType = 'Ổn đi vol trung bình, có thể DCA ⚡';
+      reversalType = `Ổn đi vol trung bình, có thể DCA ⚡ (Pump ${pumpDurationCandles}nến - Cần ${requiredRetracePercent}%)`;
       riskLevel = 'MEDIUM';
     } else if (confidence >= 50) {
-      reversalType = 'Vol nhỏ thôi nha các bố ⚠️';
+      reversalType = `Vol nhỏ thôi nha các bố ⚠️ (Pump ${pumpDurationCandles}nến - Cần ${requiredRetracePercent}%)`;
       riskLevel = 'HIGH';
     } else {
       return { 
@@ -659,15 +713,17 @@ class FakePumpStrategyBot {
         bearishPatterns: patternAnalysis.patterns,
         priceUnderMA,
         consecutiveBearish,
-        peakPrice: highestPrice
+        peakPrice: highestPrice,
+        pumpDurationCandles,
+        requiredRetracePercent
       };
     }
 
-    if (hasStrongReversal) reasons.push(`STRONG_RETRACE_${dropFromPeak.toFixed(1)}%`);
-    else reasons.push(`RETRACE_${dropFromPeak.toFixed(1)}%`);
+    reasons.push(`PUMP_${pumpDurationCandles}CANDLES`);
+    reasons.push(`RETRACE_${dropFromPeak.toFixed(1)}%_NEEDED_${requiredRetracePercent}%`);
     
     if (patternAnalysis.hasBearishPattern) reasons.push(...patternAnalysis.patterns.map(p => p.toUpperCase()));
-    if (hasVolumeSpike) reasons.push(`VOLUME_SPIKE_${volumeRatio.toFixed(1)}x`);
+    if (volumeRatio >= STRATEGY_CONFIG.reversalDetection.volumeSpikeRatio) reasons.push(`VOLUME_SPIKE_${volumeRatio.toFixed(1)}x`);
     if (priceUnderMA) reasons.push('PRICE_UNDER_MA');
     if (consecutiveBearish) reasons.push('CONSECUTIVE_BEARISH');
 
@@ -683,7 +739,9 @@ class FakePumpStrategyBot {
       bearishPatterns: patternAnalysis.patterns,
       priceUnderMA,
       consecutiveBearish,
-      peakPrice: highestPrice
+      peakPrice: highestPrice,
+      pumpDurationCandles,
+      requiredRetracePercent
     };
   }
 
@@ -732,7 +790,8 @@ class FakePumpStrategyBot {
     if (fakePump.isFakePump) {
       const reversalSignal = this.detectEnhancedReversalSignal(candles, currentPrice);
       
-      if (reversalSignal.hasReversal && reversalSignal.confidence >= 50) {
+      // ĐIỀU KIỆN MỚI: KHÔNG VÀO LỆNH NẾU RISK LEVEL HIGH
+      if (reversalSignal.hasReversal && reversalSignal.confidence >= 50 && reversalSignal.riskLevel !== 'HIGH') {
         return { 
           hasSignal: true, 
           signalType: `ENHANCED_REVERSAL_${reversalSignal.reversalType}`,
@@ -882,6 +941,8 @@ class FakePumpStrategyBot {
     consecutiveBearish: boolean;
     confidence: number;
     riskLevel: string;
+    pumpDurationCandles: number;
+    requiredRetracePercent: number;
   }> {
     try {
       const candles = await this.fetchKlineData(symbol, "Min5", 288);
@@ -960,7 +1021,9 @@ class FakePumpStrategyBot {
         priceUnderMA: reversalDetection.priceUnderMA,
         consecutiveBearish: reversalDetection.consecutiveBearish,
         confidence: entrySignal.confidence,
-        riskLevel: entrySignal.riskLevel
+        riskLevel: entrySignal.riskLevel,
+        pumpDurationCandles: reversalDetection.pumpDurationCandles,
+        requiredRetracePercent: reversalDetection.requiredRetracePercent
       };
     } catch (error) {
       return this.getDefaultEnhancedIndicatorResult();
@@ -1002,7 +1065,9 @@ class FakePumpStrategyBot {
       priceUnderMA: false,
       consecutiveBearish: false,
       confidence: 0,
-      riskLevel: 'HIGH'
+      riskLevel: 'HIGH',
+      pumpDurationCandles: 0,
+      requiredRetracePercent: 0
     };
   }
 
@@ -1046,6 +1111,45 @@ class FakePumpStrategyBot {
     return Math.floor(volume / stepSize) * stepSize;
   }
 
+  // HÀM MỚI: TÍNH LẠI STOP LOSS SAU KHI DCA
+// HÀM MỚI: TÍNH LẠI STOP LOSS SAU KHI DCA
+private recalculateStopLossAfterDCA(position: PositionData): void {
+  // KIỂM TRA AN TOÀN: Đảm bảo initialStopLossLevels tồn tại
+  if (!position.initialStopLossLevels) {
+    // Lưu SL ban đầu nếu chưa có
+    position.initialStopLossLevels = JSON.parse(JSON.stringify(position.stopLossLevels));
+  }
+
+  // ĐIỀU CHỈNH SL DỰA TRÊN SỐ LẦN DCA
+  const dcaMultiplier = 1 + (position.dcaCount * 0.1); // Mỗi lần DCA tăng SL thêm 10%
+  
+  console.log(`🛡️ RECALCULATING SL AFTER DCA: ${position.symbol} | DCA Count: ${position.dcaCount} | Multiplier: ${dcaMultiplier.toFixed(2)}x`);
+
+  for (let i = 0; i < position.stopLossLevels.length; i++) {
+    if (!position.stopLossLevels[i].executed) {
+      // KIỂM TRA AN TOÀN: Đảm bảo initialStopLossLevels[i] tồn tại
+      if (position.initialStopLossLevels && position.initialStopLossLevels[i]) {
+        const originalSL = position.initialStopLossLevels[i].priceChangePercent;
+        const newSL = originalSL * dcaMultiplier;
+        
+        position.stopLossLevels[i].priceChangePercent = newSL;
+        
+        console.log(`   SL${i+1}: ${originalSL.toFixed(2)}% -> ${newSL.toFixed(2)}%`);
+      } else {
+        // Fallback: sử dụng giá trị mặc định nếu không có initialStopLossLevels
+        const originalSL = STRATEGY_CONFIG.stopLossLevels[i].priceChangePercent;
+        const newSL = originalSL * dcaMultiplier;
+        
+        position.stopLossLevels[i].priceChangePercent = newSL;
+        
+        console.log(`   SL${i+1} (fallback): ${originalSL.toFixed(2)}% -> ${newSL.toFixed(2)}%`);
+      }
+    }
+  }
+
+  // Lưu SL đã điều chỉnh
+  position.adjustedStopLossLevels = JSON.parse(JSON.stringify(position.stopLossLevels));
+}
   // CẢI THIỆN HÀM MỞ VỊ THẾ - XỬ LÝ POSITION ID TỪ RESPONSE
   async openPosition(symbol: string, quantity: number, side: 'SHORT', signalType: string): Promise<{success: boolean, positionId?: string, realPositionId?: string}> {
     try {
@@ -1534,6 +1638,8 @@ class FakePumpStrategyBot {
                 position.lastDcaTime = Date.now();
                 position.totalDcaVolume += dcaQty;
 
+                // TÍNH LẠI SL SAU KHI DCA
+                this.recalculateStopLossAfterDCA(position);
                 this.recalculateSLTPAfterDCA(position);
                 
                 if (position.trailingStopLoss) {
@@ -1543,7 +1649,7 @@ class FakePumpStrategyBot {
                   position.trailingStopLoss.highestProfit = 0;
                 }
                 
-                console.log(`💰 DCA ${position.dcaCount} EXECUTED: ${symbol} | Added ${dcaQty} contracts | Avg Price: ${position.averagePrice}`);
+                console.log(`💰 DCA ${position.dcaCount} EXECUTED: ${symbol} | Added ${dcaQty} contracts | Avg Price: ${position.averagePrice} | SL Adjusted`);
 
                 this.pendingDcaOrders.delete(dcaOrderId);
                 break;
@@ -1832,7 +1938,9 @@ class FakePumpStrategyBot {
             priceUnderMA: indicators.priceUnderMA,
             consecutiveBearish: indicators.consecutiveBearish,
             confidence: indicators.confidence,
-            riskLevel: indicators.riskLevel
+            riskLevel: indicators.riskLevel,
+            pumpDurationCandles: indicators.pumpDurationCandles,
+            requiredRetracePercent: indicators.requiredRetracePercent
           };
 
           return { symbol, coinData };
@@ -1871,7 +1979,7 @@ class FakePumpStrategyBot {
     coinsToAdd.forEach(([symbol, coinData]) => {
       this.trackingCoins.set(symbol, coinData);
       this.candidateCoins.delete(symbol);
-      console.log(`🔍 TRACKING: ${symbol} | Pump: ${coinData.pumpPercent.toFixed(1)}% | Retrace: ${coinData.dropFromPeak.toFixed(1)}% | Confidence: ${coinData.confidence}% | Risk: ${coinData.riskLevel} | Patterns: ${coinData.bearishPatterns.join(', ')}`);
+      console.log(`🔍 TRACKING: ${symbol} | Pump: ${coinData.pumpPercent.toFixed(1)}% (${coinData.pumpDurationCandles}nến) | Retrace: ${coinData.dropFromPeak.toFixed(1)}%/${coinData.requiredRetracePercent}% | Confidence: ${coinData.confidence}% | Risk: ${coinData.riskLevel} | Patterns: ${coinData.bearishPatterns.join(', ')}`);
     });
   }
 
@@ -1928,9 +2036,11 @@ class FakePumpStrategyBot {
         coinData.consecutiveBearish = indicators.consecutiveBearish;
         coinData.confidence = indicators.confidence;
         coinData.riskLevel = indicators.riskLevel;
+        coinData.pumpDurationCandles = indicators.pumpDurationCandles;
+        coinData.requiredRetracePercent = indicators.requiredRetracePercent;
 
         if (coinData.hasEntrySignal && coinData.status === 'TRACKING') {
-          console.log(`🎯 ENTRY SIGNAL: ${symbol} | ${coinData.signalType} | Pump: ${coinData.pumpPercent.toFixed(1)}% | Retrace: ${coinData.dropFromPeak.toFixed(1)}% | Confidence: ${coinData.confidence}%`);
+          console.log(`🎯 ENTRY SIGNAL: ${symbol} | ${coinData.signalType} | Pump: ${coinData.pumpPercent.toFixed(1)}% (${coinData.pumpDurationCandles}nến) | Retrace: ${coinData.dropFromPeak.toFixed(1)}%/${coinData.requiredRetracePercent}% | Confidence: ${coinData.confidence}%`);
           console.log(`   📉 Reversal Reasons: ${coinData.reversalReasons.join(', ')}`);
           console.log(`   🎯 Risk Level: ${coinData.riskLevel} | Patterns: ${coinData.bearishPatterns.join(', ')}`);
           
@@ -1957,8 +2067,14 @@ class FakePumpStrategyBot {
     }
   }
 
-  // CẢI THIỆN HÀM VÀO VỊ THẾ - KHỞI TẠO originalTakeProfitLevels và originalStopLossLevels
+  // CẢI THIỆN HÀM VÀO VỊ THẾ - KHÔNG VÀO LỆNH NẾU RISK HIGH
   async enterPosition(symbol: string, signalType: string, confidence: number, riskLevel: string): Promise<void> {
+    // ĐIỀU KIỆN MỚI: KHÔNG VÀO LỆNH NẾU RISK LEVEL HIGH
+    if (riskLevel === 'HIGH') {
+      console.log(`🚫 SKIPPING ENTRY: ${symbol} - Risk level is HIGH`);
+      return;
+    }
+
     if (this.positions.has(symbol)) return;
 
     try {
@@ -2037,7 +2153,9 @@ class FakePumpStrategyBot {
         confidence,
         peakPrice: actualPrice * 1.05,
         positiveDcaCount: 0,
-        extendedTpLevels: []
+        extendedTpLevels: [],
+        initialStopLossLevels: JSON.parse(JSON.stringify(stopLossLevels)), // LƯU SL BAN ĐẦU
+        adjustedStopLossLevels: JSON.parse(JSON.stringify(stopLossLevels)) // SL ĐIỀU CHỈNH
       };
 
       this.positions.set(symbol, position);
@@ -2220,8 +2338,18 @@ class FakePumpStrategyBot {
         if (position.confidence) {
           confidenceInfo = ` | Confidence: ${position.confidence}%`;
         }
+
+        // HIỂN THỊ THÔNG TIN SL ĐIỀU CHỈNH
+        let adjustedSLInfo = '';
+        if (position.adjustedStopLossLevels && position.dcaCount > 0) {
+          const originalSL = position.initialStopLossLevels?.[0]?.priceChangePercent || 0;
+          const currentSL = position.adjustedStopLossLevels[0]?.priceChangePercent || 0;
+          if (currentSL > originalSL) {
+            adjustedSLInfo = ` | 🛡️ SL: ${originalSL.toFixed(1)}% → ${currentSL.toFixed(1)}%`;
+          }
+        }
         
-        console.log(`   ${symbol}: ${status} $${profitData.profit.toFixed(2)} (${profitData.priceChangePercent.toFixed(1)}%) | Closed: ${closedPercent}%${dcaInfo}${positiveDcaInfo}${extendedTpInfo}${trailingInfo}${positionIdInfo}${confidenceInfo}`);
+        console.log(`   ${symbol}: ${status} $${profitData.profit.toFixed(2)} (${profitData.priceChangePercent.toFixed(1)}%) | Closed: ${closedPercent}%${dcaInfo}${positiveDcaInfo}${extendedTpInfo}${adjustedSLInfo}${trailingInfo}${positionIdInfo}${confidenceInfo}`);
       }
     }
     console.log('');
@@ -2229,12 +2357,14 @@ class FakePumpStrategyBot {
 
   async run(): Promise<void> {
     console.log('🚀 Starting ENHANCED FAKE PUMP STRATEGY BOT');
-    console.log('🎯 ENTRY: Pump 15% + Reversal 5% từ đỉnh (Telegram Bot Logic)');
-    console.log('📊 PUMP: Trong 10 nến 5m');
-    console.log('💰 DCA: Thêm vào khi giá đi ngược hướng');
+    console.log('🎯 ENTRY: Pump 15% + Reversal từ đỉnh (Điều kiện mới)');
+    console.log('📊 PUMP NHANH (3 nến): Cần giảm 5% từ đỉnh');
+    console.log('📊 PUMP CHẬM (>3 nến): Cần giảm 3% từ đỉnh');
+    console.log('🚫 KHÔNG VÀO LỆNH NẾU RISK LEVEL: HIGH');
+    console.log('💰 DCA: Thêm vào khi giá đi ngược hướng + TÍNH LẠI SL');
     console.log('🚀 DCA DƯƠNG: Nhồi thêm lệnh khi giá giảm mạnh & dời TP xa hơn');
     console.log('⏰ FILTER: Coin phải list ít nhất 20 ngày');
-    console.log('🛡️ Risk Management: Confidence-based position sizing');
+    console.log('🛡️ Risk Management: Confidence-based position sizing + Dynamic SL after DCA');
     
     await this.fetchBinanceSymbols();
     
