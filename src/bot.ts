@@ -26,8 +26,8 @@ interface Order {
 }
 
 const STRATEGY_CONFIG = {
-  initialPositionPercent: 0.1,
-  maxTotalPositionPercent: 0.35,
+  initialPositionPercent: 0.2,
+  maxTotalPositionPercent: 0.6,
   takeProfitLevels: [
     { priceChangePercent: 2.0, closeRatio: 0.4 },
     { priceChangePercent: 4.0, closeRatio: 0.4 },
@@ -38,7 +38,7 @@ const STRATEGY_CONFIG = {
     { priceChangePercent: 3.0, closeRatio: 0.5 }
   ],
   maxVolume24h: 5000000,
-  minVolume24h: 0,
+  minVolume24h: 100000,
   fakePumpMinPercent: 15,
   volumeSpikeThreshold: 2.5,
   maxActivePositions: 3,
