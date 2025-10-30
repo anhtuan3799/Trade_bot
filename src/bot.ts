@@ -26,7 +26,7 @@ interface Order {
 }
 
 const STRATEGY_CONFIG = {
-  initialPositionPercent: 0.2,
+  initialPositionPercent: 0.15,
   maxTotalPositionPercent: 0.6,
   takeProfitLevels: [
     { priceChangePercent: 2.0, closeRatio: 0.4 },
@@ -37,7 +37,7 @@ const STRATEGY_CONFIG = {
     { priceChangePercent: 1.5, closeRatio: 0.5 },
     { priceChangePercent: 3.0, closeRatio: 0.5 }
   ],
-  maxVolume24h: 5000000,
+  maxVolume24h: 30000000,
   minVolume24h: 100000,
   fakePumpMinPercent: 15,
   volumeSpikeThreshold: 2.5,
@@ -48,31 +48,36 @@ const STRATEGY_CONFIG = {
   resistanceLookback: 20,
   volumeDropThreshold: 0.6,
   dcaLevels: [
-    { priceChangePercent: 0.5, addRatio: 0.25, condition: 'MICRO_PULLBACK' },
-    { priceChangePercent: 1.2, addRatio: 0.30, condition: 'RESISTANCE_TOUCH' },
-    { priceChangePercent: 2.0, addRatio: 0.35, condition: 'EMA_RESISTANCE' },
-    { priceChangePercent: 3.0, addRatio: 0.40, condition: 'STRONG_RESISTANCE' }
+    { priceChangePercent: 0.5, addRatio: 0.15, condition: 'MICRO_PULLBACK' },
+    { priceChangePercent: 1.2, addRatio: 0.15, condition: 'RESISTANCE_TOUCH' },
+    { priceChangePercent: 2.0, addRatio: 0.15, condition: 'EMA_RESISTANCE' },
+    { priceChangePercent: 3.0, addRatio: 0.15, condition: 'STRONG_RESISTANCE' }
   ],
-  // DCA DƯƠNG - NHỒI LỆNH KHI GIÁ GIẢM MẠNH
   positiveDcaLevels: [
     { profitPercent: 1.5, addRatio: 0.15, extendTpPercent: 2.0 },
-    { profitPercent: 3.0, addRatio: 0.20, extendTpPercent: 3.0 },
-    { profitPercent: 5.0, addRatio: 0.25, extendTpPercent: 4.0 },
-    { profitPercent: 8.0, addRatio: 0.30, extendTpPercent: 5.0 }
+    { profitPercent: 3.0, addRatio: 0.15, extendTpPercent: 3.0 },
+    { profitPercent: 5.0, addRatio: 0.15, extendTpPercent: 4.0 },
+    { profitPercent: 8.0, addRatio: 0.15, extendTpPercent: 5.0 }
   ],
   maxDcaTimes: 8,
   trailingStopLoss: {
     enabled: true,
-    activationProfitPercent: 1.0,
+    minProfitToActivate: 10.0, // Ít nhất 10% lợi nhuận mới kích hoạt
+    activationCondition: 'HALF_PROFIT',
     trailDistancePercent: 0.5,
     maxTrailDistancePercent: 3.0
+  },
+  strongDowntrendConfig: {
+    minCandleBodyRatio: 0.7, // Nến đỏ dài: thân nến chiếm 70% tổng range
+    minPriceDropPercent: 3.0, // Giảm ít nhất 3% trong 1 nến
+    volumeSpikeRatio: 2.0,   // Volume tăng ít nhất 2x
+    doubleTpOnStrongDowntrend: true // Dời TP xa gấp đôi khi có downtrend mạnh
   },
   reversalDetection: {
     enabled: true,
     minPumpPercent: 15,
-    pumpCandles: 10,
-    // ĐIỀU KIỆN MỚI: Pump 3 nến cần giảm 5%, pump trên 3 nến cần giảm 3%
-    fastPumpCandles: 3,
+    pumpCandles: 4,
+    fastPumpCandles: 2,
     fastPumpRetraceRequired: 5,
     slowPumpRetraceRequired: 3,
     volumeSpikeRatio: 2.5,
@@ -160,6 +165,7 @@ interface TrailingStopLoss {
   currentStopPrice: number;
   highestProfit: number;
   activated: boolean;
+  peakProfitReached: boolean;
 }
 
 interface PositionData {
@@ -197,8 +203,10 @@ interface PositionData {
   positiveDcaCount: number;
   extendedTpLevels: number[];
   lastPositiveDcaTime?: number;
-  initialStopLossLevels?: StopLossLevel[]; // THÊM: Lưu SL ban đầu
-  adjustedStopLossLevels?: StopLossLevel[]; // THÊM: SL đã điều chỉnh sau DCA
+  initialStopLossLevels?: StopLossLevel[];
+  adjustedStopLossLevels?: StopLossLevel[];
+  peakProfit?: number;
+  tpDoubled?: boolean; // Đánh dấu đã double TP chưa
 }
 
 interface CoinTrackingData {
@@ -292,16 +300,66 @@ class FakePumpStrategyBot {
   private pendingDcaOrders: Map<string, { symbol: string; level: number; quantity: number; timestamp: number }> = new Map();
   private coinListingTimeCache: Map<string, number> = new Map();
 
+  // THÊM: Rate limiting và concurrency control
+  private concurrentRequests = 0;
+  private maxConcurrentRequests = 8;
+  private lastRequestTime = 0;
+  private requestsPerSecond = 8;
+
   constructor() {
     console.log('🤖 FAKE PUMP STRATEGY BOT - ENHANCED REVERSAL MODE');
-    console.log('🎯 ENTRY: Pump 15% + Reversal từ đỉnh (Điều kiện mới)');
-    console.log('📊 PUMP NHANH (3 nến): Cần giảm 5% từ đỉnh');
-    console.log('📊 PUMP CHẬM (>3 nến): Cần giảm 3% từ đỉnh');
-    console.log('🚫 KHÔNG VÀO LỆNH NẾU RISK LEVEL: HIGH');
-    console.log('💰 DCA: Thêm vào khi giá đi ngược hướng + TÍNH LẠI SL');
-    console.log('🚀 DCA DƯƠNG: Nhồi thêm lệnh khi giá giảm mạnh & dời TP xa hơn');
-    console.log('⏰ FILTER: Coin phải list ít nhất 20 ngày');
-    console.log('🛡️ Risk Management: Confidence-based position sizing + Dynamic SL after DCA');
+    console.log('🎯 ENTRY: Pump 15% + Reversal từ đỉnh');
+    console.log('📊 PUMP 4 NẾN 5PHÚT: Pump 2 nến cần giảm 5%, pump trên 2 nến cần giảm 3%');
+    console.log('💰 VÀO LỆNH: 15% so với tổng tài sản ban đầu');
+    console.log('🛡️ TRAILING SL: Kích hoạt khi có 10% lợi nhuận và bị giảm 1 nửa');
+    console.log('🎯 DOUBLE TP: Khi có downtrend mạnh');
+  }
+
+  // THÊM: Hàm rate limiting để tránh bị block
+  private async rateLimit(): Promise<void> {
+    const now = Date.now();
+    const timeSinceLastRequest = now - this.lastRequestTime;
+    const minInterval = 1000 / this.requestsPerSecond;
+
+    if (timeSinceLastRequest < minInterval) {
+      await new Promise(resolve => setTimeout(resolve, minInterval - timeSinceLastRequest));
+    }
+
+    while (this.concurrentRequests >= this.maxConcurrentRequests) {
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+
+    this.concurrentRequests++;
+    this.lastRequestTime = Date.now();
+  }
+
+  private async releaseRateLimit(): Promise<void> {
+    this.concurrentRequests--;
+  }
+
+  // THÊM: Hàm xử lý song song với rate limiting
+  private async processInParallel<T>(
+    items: string[],
+    processor: (item: string) => Promise<T | null>
+  ): Promise<T[]> {
+    const results: (T | null)[] = new Array(items.length).fill(null);
+    
+    const processItem = async (index: number): Promise<void> => {
+      try {
+        await this.rateLimit();
+        results[index] = await processor(items[index]);
+      } catch (error) {
+        results[index] = null;
+      } finally {
+        await this.releaseRateLimit();
+      }
+    };
+
+    // Xử lý song song tất cả items
+    const promises = items.map((_, index) => processItem(index));
+    await Promise.all(promises);
+
+    return results.filter((result): result is T => result !== null);
   }
 
   private async getCoinListingTime(symbol: string): Promise<number> {
@@ -424,6 +482,34 @@ class FakePumpStrategyBot {
       patterns, 
       hasBearishPattern: patterns.length > 0 
     };
+  }
+
+  // THÊM: Hàm phát hiện downtrend mạnh
+  private detectStrongDowntrend(candles: SimpleCandle[]): boolean {
+    if (candles.length < 2) return false;
+
+    const currentCandle = candles[candles.length - 1];
+    const previousCandle = candles[candles.length - 2];
+
+    // Kiểm tra nến đỏ dài
+    const body = Math.abs(currentCandle.close - currentCandle.open);
+    const totalRange = currentCandle.high - currentCandle.low;
+    const bodyRatio = body / totalRange;
+
+    const priceDropPercent = ((previousCandle.close - currentCandle.close) / previousCandle.close) * 100;
+
+    // Kiểm tra volume spike
+    const avgVolume = candles.slice(-10, -1).reduce((sum, c) => sum + c.volume, 0) / 9;
+    const volumeRatio = currentCandle.volume / avgVolume;
+
+    const isLongRedCandle = currentCandle.close < currentCandle.open && 
+                           bodyRatio >= STRATEGY_CONFIG.strongDowntrendConfig.minCandleBodyRatio;
+
+    const hasStrongPriceDrop = priceDropPercent >= STRATEGY_CONFIG.strongDowntrendConfig.minPriceDropPercent;
+
+    const hasVolumeSpike = volumeRatio >= STRATEGY_CONFIG.strongDowntrendConfig.volumeSpikeRatio;
+
+    return isLongRedCandle && hasStrongPriceDrop && hasVolumeSpike;
   }
 
   private calculateMarketMomentum(candles: SimpleCandle[]): number {
@@ -555,16 +641,14 @@ class FakePumpStrategyBot {
     return volatilityScore + volumeScore + fakePumpScore + additionalScore;
   }
 
-  // HÀM MỚI: XÁC ĐỊNH THỜI GIAN PUMP (SỐ NẾN)
   private calculatePumpDuration(candles: SimpleCandle[], pumpHigh: number): number {
-    if (candles.length < 10) return 0;
+    if (candles.length < 4) return 0;
     
-    const recentCandles = candles.slice(-10);
+    const recentCandles = candles.slice(-4);
     
-    // Tìm nến đầu tiên đạt đỉnh pump
     let pumpStartIndex = -1;
     for (let i = recentCandles.length - 1; i >= 0; i--) {
-      if (Math.abs(recentCandles[i].high - pumpHigh) / pumpHigh < 0.01) { // Sai số 1%
+      if (Math.abs(recentCandles[i].high - pumpHigh) / pumpHigh < 0.01) {
         pumpStartIndex = i;
         break;
       }
@@ -572,7 +656,6 @@ class FakePumpStrategyBot {
     
     if (pumpStartIndex === -1) return 0;
     
-    // Tìm nến bắt đầu pump (giá thấp nhất trước khi pump)
     let pumpLow = recentCandles[pumpStartIndex].low;
     let startIndex = pumpStartIndex;
     
@@ -607,7 +690,8 @@ class FakePumpStrategyBot {
     pumpDurationCandles: number;
     requiredRetracePercent: number;
   } {
-    if (candles.length < 15) {
+    const numCandlesToCheck = STRATEGY_CONFIG.reversalDetection.pumpCandles;
+    if (candles.length < numCandlesToCheck) {
       return { 
         hasReversal: false, 
         reversalType: '', 
@@ -626,18 +710,18 @@ class FakePumpStrategyBot {
       };
     }
 
-    const last10Candles = candles.slice(-10);
+    const recentCandles = candles.slice(-numCandlesToCheck);
     const currentCandle = candles[candles.length - 1];
     const previousCandle = candles[candles.length - 2];
     
-    const firstPrice = last10Candles[0].open;
-    const highestPrice = Math.max(...last10Candles.map(k => k.high));
+    const firstPrice = recentCandles[0].open;
+    const highestPrice = Math.max(...recentCandles.map(k => k.high));
     const pumpPct = ((highestPrice - firstPrice) / firstPrice) * 100;
     
     const dropFromPeak = ((highestPrice - currentPrice) / highestPrice) * 100;
     
-    const avgVolume10 = last10Candles.slice(0, -1).reduce((sum, k) => sum + k.volume, 0) / 9;
-    const volumeRatio = currentCandle.volume / avgVolume10;
+    const avgVolume = recentCandles.slice(0, -1).reduce((sum, k) => sum + k.volume, 0) / (recentCandles.length - 1);
+    const volumeRatio = currentCandle.volume / avgVolume;
     
     const patternAnalysis = this.detectBearishCandlestickPatterns(currentCandle, previousCandle);
     
@@ -645,11 +729,11 @@ class FakePumpStrategyBot {
     const ma10 = this.calculateMA(candles, 10);
     const priceUnderMA = currentPrice < ma5 && currentPrice < ma10;
     
-    const last3Candles = last10Candles.slice(-3);
+    const last3Candles = recentCandles.slice(-3);
     const consecutiveBearish = last3Candles.every(k => k.close < k.open);
     
-    // TÍNH TOÁN THỜI GIAN PUMP VÀ MỨC GIẢM YÊU CẦU
     const pumpDurationCandles = this.calculatePumpDuration(candles, highestPrice);
+    
     const requiredRetracePercent = pumpDurationCandles <= STRATEGY_CONFIG.reversalDetection.fastPumpCandles 
       ? STRATEGY_CONFIG.reversalDetection.fastPumpRetraceRequired 
       : STRATEGY_CONFIG.reversalDetection.slowPumpRetraceRequired;
@@ -659,7 +743,6 @@ class FakePumpStrategyBot {
     let riskLevel = 'HIGH';
     let reversalType = '';
 
-    // ĐIỀU KIỆN MỚI: DỰA TRÊN THỜI GIAN PUMP
     const hasReversalSignal = dropFromPeak >= requiredRetracePercent;
 
     if (!hasReversalSignal) {
@@ -681,7 +764,6 @@ class FakePumpStrategyBot {
       };
     }
 
-    // TÍNH CONFIDENCE DỰA TRÊN ĐIỀU KIỆN MỚI
     if (dropFromPeak >= requiredRetracePercent + 3) confidence += 35;
     else if (dropFromPeak >= requiredRetracePercent) confidence += 25;
     
@@ -690,7 +772,6 @@ class FakePumpStrategyBot {
     if (priceUnderMA) confidence += 15;
     if (consecutiveBearish) confidence += 15;
     
-    // XÁC ĐỊNH RISK LEVEL - KHÔNG VÀO LỆNH NẾU RISK HIGH
     if (confidence >= 80) {
       reversalType = `CỰC MẠNH 🔥 (Pump ${pumpDurationCandles}nến - Cần ${requiredRetracePercent}%)`;
       riskLevel = 'LOW';
@@ -790,7 +871,6 @@ class FakePumpStrategyBot {
     if (fakePump.isFakePump) {
       const reversalSignal = this.detectEnhancedReversalSignal(candles, currentPrice);
       
-      // ĐIỀU KIỆN MỚI: KHÔNG VÀO LỆNH NẾU RISK LEVEL HIGH
       if (reversalSignal.hasReversal && reversalSignal.confidence >= 50 && reversalSignal.riskLevel !== 'HIGH') {
         return { 
           hasSignal: true, 
@@ -1094,7 +1174,7 @@ class FakePumpStrategyBot {
         adjustedPercent = percent * 0.7;
       }
       
-      const capital = this.accountBalance * adjustedPercent;
+      const capital = this.initialBalance * adjustedPercent;
       let vol = (capital * LEVERAGE) / (currentPrice * contractInfo.contractSize);
       
       const stepSize = Math.pow(10, -contractInfo.volumePrecision);
@@ -1111,46 +1191,51 @@ class FakePumpStrategyBot {
     return Math.floor(volume / stepSize) * stepSize;
   }
 
-  // HÀM MỚI: TÍNH LẠI STOP LOSS SAU KHI DCA
-// HÀM MỚI: TÍNH LẠI STOP LOSS SAU KHI DCA
-private recalculateStopLossAfterDCA(position: PositionData): void {
-  // KIỂM TRA AN TOÀN: Đảm bảo initialStopLossLevels tồn tại
-  if (!position.initialStopLossLevels) {
-    // Lưu SL ban đầu nếu chưa có
-    position.initialStopLossLevels = JSON.parse(JSON.stringify(position.stopLossLevels));
-  }
+  private recalculateStopLossAfterDCA(position: PositionData): void {
+    if (!position.initialStopLossLevels) {
+      position.initialStopLossLevels = JSON.parse(JSON.stringify(position.stopLossLevels));
+    }
 
-  // ĐIỀU CHỈNH SL DỰA TRÊN SỐ LẦN DCA
-  const dcaMultiplier = 1 + (position.dcaCount * 0.1); // Mỗi lần DCA tăng SL thêm 10%
-  
-  console.log(`🛡️ RECALCULATING SL AFTER DCA: ${position.symbol} | DCA Count: ${position.dcaCount} | Multiplier: ${dcaMultiplier.toFixed(2)}x`);
+    const dcaMultiplier = 1 + (position.dcaCount * 0.1);
+    
+    // GIẢM LOG: Chỉ log khi cần thiết
+    if (position.dcaCount > 0) {
+      console.log(`🛡️ SL Adjusted for ${position.symbol}: DCA ${position.dcaCount}`);
+    }
 
-  for (let i = 0; i < position.stopLossLevels.length; i++) {
-    if (!position.stopLossLevels[i].executed) {
-      // KIỂM TRA AN TOÀN: Đảm bảo initialStopLossLevels[i] tồn tại
-      if (position.initialStopLossLevels && position.initialStopLossLevels[i]) {
-        const originalSL = position.initialStopLossLevels[i].priceChangePercent;
-        const newSL = originalSL * dcaMultiplier;
-        
-        position.stopLossLevels[i].priceChangePercent = newSL;
-        
-        console.log(`   SL${i+1}: ${originalSL.toFixed(2)}% -> ${newSL.toFixed(2)}%`);
-      } else {
-        // Fallback: sử dụng giá trị mặc định nếu không có initialStopLossLevels
-        const originalSL = STRATEGY_CONFIG.stopLossLevels[i].priceChangePercent;
-        const newSL = originalSL * dcaMultiplier;
-        
-        position.stopLossLevels[i].priceChangePercent = newSL;
-        
-        console.log(`   SL${i+1} (fallback): ${originalSL.toFixed(2)}% -> ${newSL.toFixed(2)}%`);
+    for (let i = 0; i < position.stopLossLevels.length; i++) {
+      if (!position.stopLossLevels[i].executed) {
+        if (position.initialStopLossLevels && position.initialStopLossLevels[i]) {
+          const originalSL = position.initialStopLossLevels[i].priceChangePercent;
+          const newSL = originalSL * dcaMultiplier;
+          position.stopLossLevels[i].priceChangePercent = newSL;
+        } else {
+          const originalSL = STRATEGY_CONFIG.stopLossLevels[i].priceChangePercent;
+          const newSL = originalSL * dcaMultiplier;
+          position.stopLossLevels[i].priceChangePercent = newSL;
+        }
       }
     }
+
+    position.adjustedStopLossLevels = JSON.parse(JSON.stringify(position.stopLossLevels));
   }
 
-  // Lưu SL đã điều chỉnh
-  position.adjustedStopLossLevels = JSON.parse(JSON.stringify(position.stopLossLevels));
-}
-  // CẢI THIỆN HÀM MỞ VỊ THẾ - XỬ LÝ POSITION ID TỪ RESPONSE
+  // THÊM: Hàm double Take Profit levels
+  private doubleTakeProfitLevels(position: PositionData): void {
+    if (position.tpDoubled) return; // Chỉ double một lần
+
+    console.log(`🎯🔥 DOUBLE TP ACTIVATED: ${position.symbol} - Strong downtrend detected!`);
+
+    for (let i = 0; i < position.takeProfitLevels.length; i++) {
+      if (!position.takeProfitLevels[i].executed) {
+        position.takeProfitLevels[i].priceChangePercent *= 2;
+        console.log(`   TP${i+1}: ${position.takeProfitLevels[i].priceChangePercent/2}% -> ${position.takeProfitLevels[i].priceChangePercent}%`);
+      }
+    }
+
+    position.tpDoubled = true;
+  }
+
   async openPosition(symbol: string, quantity: number, side: 'SHORT', signalType: string): Promise<{success: boolean, positionId?: string, realPositionId?: string}> {
     try {
       const contractInfo = await this.getContractInfo(symbol);
@@ -1165,7 +1250,8 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
       const formattedSymbol = symbol.replace('USDT', '_USDT');
       const orderSide = 3;
 
-      console.log(`🔔 OPEN ORDER: ${symbol} | ${openQty} contracts | Price: ${currentPrice} | Side: SHORT | Signal: ${signalType}`);
+      // LOG QUAN TRỌNG: Vào lệnh
+      console.log(`🎯 ENTRY: ${symbol} | ${openQty} contracts | ${currentPrice} | SHORT | ${signalType}`);
 
       const orderResponse = await client.submitOrder({
         symbol: formattedSymbol,
@@ -1181,11 +1267,9 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
       let orderId: string;
       let realPositionId: string | undefined;
 
-      // XỬ LÝ RESPONSE ĐỂ LẤY POSITION ID THẬT
       if (orderResponse && orderResponse.data) {
         if (typeof orderResponse.data === 'string') {
           orderId = orderResponse.data;
-          // Nếu data là string, có thể là orderId, cần lấy positionId từ API khác
           try {
             await new Promise(resolve => setTimeout(resolve, 2000));
             const positions = await this.getCurrentPositions();
@@ -1196,11 +1280,10 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
               realPositionId = position.id?.toString() || position.positionId?.toString();
             }
           } catch (error) {
-            console.log(`⚠️ Could not get real position ID for ${symbol}`);
+            // Giảm log lỗi
           }
         } else if (typeof orderResponse.data === 'object') {
           orderId = orderResponse.data.orderId?.toString() || `order_${Date.now()}`;
-          // ƯU TIÊN LẤY POSITION ID TỪ RESPONSE
           realPositionId = orderResponse.data.positionId?.toString() || 
                           orderResponse.data.data?.positionId?.toString();
         } else {
@@ -1210,7 +1293,6 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
         orderId = `order_${Date.now()}`;
       }
 
-      // NẾU VẪN CHƯA CÓ POSITION ID, THỬ LẤY TỪ API VỊ THẾ
       if (!realPositionId) {
         try {
           await new Promise(resolve => setTimeout(resolve, 3000));
@@ -1220,10 +1302,9 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
           );
           if (position) {
             realPositionId = position.id?.toString() || position.positionId?.toString();
-            console.log(`✅ REAL POSITION ID FOUND VIA API: ${realPositionId} for ${symbol}`);
           }
         } catch (error) {
-          console.log(`⚠️ Could not get real position ID via API for ${symbol}`);
+          // Giảm log lỗi
         }
       }
 
@@ -1236,28 +1317,23 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
       return {success: true, positionId, realPositionId};
 
     } catch (err: any) {
-      console.error(`❌ OPEN POSITION ERROR: ${symbol}`, err.message);
+      console.error(`❌ OPEN ERROR: ${symbol}`, err.message);
       return {success: false};
     }
   }
 
-  // CẢI THIỆN HÀM ĐÓNG VỊ THẾ - SỬ DỤNG POSITION ID THẬT
   async closePosition(symbol: string, quantity: number, side: 'SHORT', reason: string, positionId?: string): Promise<boolean> {
     try {
       const position = this.positions.get(symbol);
       
       if (!position) {
-        console.log(`❌ No position found for ${symbol}`);
         return false;
       }
 
-      // ƯU TIÊN SỬ DỤNG REAL POSITION ID
       let targetPositionId = 0;
       if (position.realPositionId) {
         targetPositionId = parseInt(position.realPositionId);
-        console.log(`🎯 USING REAL POSITION ID: ${targetPositionId} for ${symbol}`);
       } else if (positionId) {
-        // Fallback: thử parse positionId từ tham số
         const parsedId = parseInt(positionId);
         if (!isNaN(parsedId)) {
           targetPositionId = parsedId;
@@ -1275,7 +1351,8 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
       
       const formattedSymbol = symbol.replace('USDT', '_USDT');
 
-      console.log(`🔔 CLOSE ORDER: ${symbol} | ${closeQty} contracts | Price: ${currentPrice} | Reason: ${reason} | PositionID: ${targetPositionId}`);
+      // LOG QUAN TRỌNG: Đóng lệnh
+      console.log(`🔔 CLOSE: ${symbol} | ${closeQty} contracts | ${reason}`);
 
       const orderResponse = await client.submitOrder({
         symbol: formattedSymbol,
@@ -1289,7 +1366,7 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
       }) as any;
 
       if (orderResponse && orderResponse.code === 0) {
-        console.log(`✅ CLOSE ORDER SUCCESS: ${symbol}`);
+        console.log(`✅ CLOSED: ${symbol} | ${reason}`);
         
         if (position) {
           const profit = await this.calculateProfitForQuantity(position, currentPrice, closeQty);
@@ -1299,18 +1376,16 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
           if (position.closedAmount >= position.positionSize) {
             this.positions.delete(symbol);
             this.activePositionMonitoring.delete(symbol);
-            console.log(`🗑️ POSITION REMOVED: ${symbol}`);
           }
         }
         
         return true;
       } else {
-        console.log(`❌ CLOSE ORDER FAILED: ${symbol}`, orderResponse?.msg);
         return false;
       }
 
     } catch (err: any) {
-      console.error(`❌ CLOSE POSITION ERROR: ${symbol}`, err.message);
+      console.error(`❌ CLOSE ERROR: ${symbol}`, err.message);
       
       const position = this.positions.get(symbol);
       if (position) {
@@ -1339,13 +1414,10 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
       
       const formattedSymbol = symbol.replace('USDT', '_USDT');
       
-      // SỬ DỤNG REAL POSITION ID
       let targetPositionId = 0;
       if (position.realPositionId) {
         targetPositionId = parseInt(position.realPositionId);
       }
-
-      console.log(`🔄 CLOSING ALL POSITIONS: ${symbol} | Qty: ${closeQty} | Reason: ${reason} | PositionID: ${targetPositionId}`);
 
       const orderResponse = await client.submitOrder({
         symbol: formattedSymbol,
@@ -1362,13 +1434,10 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
         position.closedAmount = position.positionSize;
         this.positions.delete(symbol);
         this.activePositionMonitoring.delete(symbol);
-        console.log(`✅ ALL POSITIONS CLOSED: ${symbol}`);
-      } else {
-        console.log(`❌ FAILED TO CLOSE ALL POSITIONS: ${symbol}`);
       }
 
     } catch (error: any) {
-      console.error(`❌ CLOSE ALL POSITIONS ERROR: ${symbol}`, error.message);
+      // Giảm log lỗi
     }
   }
 
@@ -1383,7 +1452,6 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
       }
       return [];
     } catch (error: any) {
-      console.error('❌ GET POSITIONS ERROR:', error.message);
       return [];
     }
   }
@@ -1398,12 +1466,10 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
       }
       return null;
     } catch (error: any) {
-      console.error(`❌ GET POSITION FOR SYMBOL ERROR: ${symbol}`, error.message);
       return null;
     }
   }
 
-  // CẢI THIỆN HÀM CẬP NHẬT POSITION ID THẬT
   private async updateRealPositionIds(): Promise<void> {
     try {
       const currentPositions = await this.getCurrentPositions();
@@ -1417,11 +1483,10 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
         if (realPosition && !position.realPositionId) {
           position.realPositionId = realPosition.id?.toString() || 
                                    realPosition.positionId?.toString();
-          console.log(`🔄 UPDATED REAL POSITION ID: ${symbol} -> ${position.realPositionId}`);
         }
       }
     } catch (error: any) {
-      console.error('❌ UPDATE REAL POSITION IDS ERROR:', error.message);
+      // Giảm log lỗi
     }
   }
 
@@ -1461,7 +1526,6 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
     }
   }
 
-  // SỬA LỖI: ĐẢM BẢO originalTakeProfitLevels LUÔN ĐƯỢC ĐỊNH NGHĨA
   private recalculateSLTPAfterDCA(position: PositionData): void {    
     if (!position.originalTakeProfitLevels) {
       position.originalTakeProfitLevels = JSON.parse(JSON.stringify(position.takeProfitLevels));
@@ -1492,7 +1556,6 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
   private recalculateSLTPAfterPartialClose(position: PositionData): void {    
     const remainingQty = position.totalQty - position.closedAmount;
     
-    // SỬA LỖI: KIỂM TRA originalTakeProfitLevels CÓ TỒN TẠI KHÔNG
     for (let i = 0; i < position.takeProfitLevels.length; i++) {
       if (!position.takeProfitLevels[i].executed && position.originalTakeProfitLevels) {
         const originalRatio = position.originalTakeProfitLevels[i].closeRatio;
@@ -1500,7 +1563,6 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
       }
     }
     
-    // SỬA LỖI: KIỂM TRA originalStopLossLevels CÓ TỒN TẠI KHÔNG
     for (let i = 0; i < position.stopLossLevels.length; i++) {
       if (!position.stopLossLevels[i].executed && position.originalStopLossLevels) {
         const originalRatio = position.originalStopLossLevels[i].closeRatio;
@@ -1553,16 +1615,18 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
                 position.totalDcaVolume += positiveDcaQty;
 
                 this.extendTakeProfitLevels(position, level.extendTpPercent);
-                this.recalculateSLTPAfterDCA(position); // RECALCULATE SLTP SAU DCA DƯƠNG
+                this.recalculateSLTPAfterDCA(position);
                 
                 if (position.trailingStopLoss) {
                   position.trailingStopLoss.activated = false;
                   position.trailingStopLoss.activationPrice = 0;
                   position.trailingStopLoss.currentStopPrice = 0;
                   position.trailingStopLoss.highestProfit = 0;
+                  position.trailingStopLoss.peakProfitReached = false;
                 }
                 
-                console.log(`🚀 POSITIVE DCA ${position.positiveDcaCount} EXECUTED: ${symbol} | Added ${positiveDcaQty} contracts | Profit: ${Math.abs(profitData.priceChangePercent).toFixed(2)}% | Extended TP: +${level.extendTpPercent}%`);
+                // LOG QUAN TRỌNG: DCA
+                console.log(`🚀 POSITIVE DCA: ${symbol} | +${positiveDcaQty} contracts | Profit: ${Math.abs(profitData.priceChangePercent).toFixed(2)}%`);
 
                 this.pendingDcaOrders.delete(dcaOrderId);
                 break;
@@ -1574,13 +1638,16 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
         }
       }
     } catch (error) {
-      console.error(`❌ POSITIVE DCA ERROR: ${symbol}`, error);
+      // Không log lỗi
     }
   }
 
   private extendTakeProfitLevels(position: PositionData, extendPercent: number): void {
-    console.log(`🎯 EXTENDING TP LEVELS: ${position.symbol} | Adding +${extendPercent}% to all TP levels`);
-    
+    // Giảm log chi tiết
+    if (extendPercent > 0) {
+      console.log(`🎯 TP Extended: ${position.symbol} | +${extendPercent}%`);
+    }
+
     if (!position.originalTakeProfitLevels) {
       position.originalTakeProfitLevels = JSON.parse(JSON.stringify(position.takeProfitLevels));
     }
@@ -1589,8 +1656,6 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
       if (!position.takeProfitLevels[i].executed) {
         const originalLevel = position.originalTakeProfitLevels[i];
         position.takeProfitLevels[i].priceChangePercent = originalLevel.priceChangePercent + extendPercent;
-        
-        console.log(`   TP${i+1}: ${originalLevel.priceChangePercent}% -> ${position.takeProfitLevels[i].priceChangePercent}%`);
       }
     }
 
@@ -1638,7 +1703,6 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
                 position.lastDcaTime = Date.now();
                 position.totalDcaVolume += dcaQty;
 
-                // TÍNH LẠI SL SAU KHI DCA
                 this.recalculateStopLossAfterDCA(position);
                 this.recalculateSLTPAfterDCA(position);
                 
@@ -1647,9 +1711,11 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
                   position.trailingStopLoss.activationPrice = 0;
                   position.trailingStopLoss.currentStopPrice = 0;
                   position.trailingStopLoss.highestProfit = 0;
+                  position.trailingStopLoss.peakProfitReached = false;
                 }
                 
-                console.log(`💰 DCA ${position.dcaCount} EXECUTED: ${symbol} | Added ${dcaQty} contracts | Avg Price: ${position.averagePrice} | SL Adjusted`);
+                // LOG QUAN TRỌNG: DCA
+                console.log(`💰 DCA: ${symbol} | +${dcaQty} contracts | DCA Count: ${position.dcaCount}`);
 
                 this.pendingDcaOrders.delete(dcaOrderId);
                 break;
@@ -1665,21 +1731,38 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
     }
   }
 
+  // CẬP NHẬT: Trailing SL chỉ kích hoạt khi có ít nhất 10% lợi nhuận
   private async checkTrailingStopLoss(symbol: string, position: PositionData, currentPrice: number): Promise<void> {
-    if (!STRATEGY_CONFIG.trailingStopLoss.enabled || !position.trailingStopLoss || position.dcaCount === 0) {
+    if (!STRATEGY_CONFIG.trailingStopLoss.enabled || !position.trailingStopLoss) {
       return;
     }
 
     const profitData = await this.calculateProfitAndPriceChange(position, currentPrice);
-
-    if (!position.trailingStopLoss.activated && profitData.priceChangePercent <= -STRATEGY_CONFIG.trailingStopLoss.activationProfitPercent) {
-      position.trailingStopLoss.activated = true;
-      position.trailingStopLoss.activationPrice = currentPrice;
-      position.trailingStopLoss.currentStopPrice = currentPrice * (1 + STRATEGY_CONFIG.trailingStopLoss.trailDistancePercent / 100);
+    
+    // Cập nhật lợi nhuận cao nhất
+    if (profitData.priceChangePercent < position.trailingStopLoss.highestProfit) {
       position.trailingStopLoss.highestProfit = profitData.priceChangePercent;
+      position.trailingStopLoss.peakProfitReached = true;
+    }
+
+    // ĐIỀU KIỆN MỚI: Phải có ít nhất 10% lợi nhuận mới được kích hoạt trailing SL
+    const hasMinimumProfit = Math.abs(profitData.priceChangePercent) >= STRATEGY_CONFIG.trailingStopLoss.minProfitToActivate;
+
+    // Kiểm tra điều kiện kích hoạt: có đủ lợi nhuận VÀ lợi nhuận bị giảm 1 nửa so với đỉnh
+    if (!position.trailingStopLoss.activated && position.trailingStopLoss.peakProfitReached && hasMinimumProfit) {
+      const halfOfPeakProfit = position.trailingStopLoss.highestProfit / 2;
+      const shouldActivate = profitData.priceChangePercent >= halfOfPeakProfit;
+
+      if (shouldActivate) {
+        position.trailingStopLoss.activated = true;
+        position.trailingStopLoss.activationPrice = currentPrice;
+        position.trailingStopLoss.currentStopPrice = currentPrice * (1 + STRATEGY_CONFIG.trailingStopLoss.trailDistancePercent / 100);
+        console.log(`🛡️ TRAILING SL: ${symbol} | Activated at ${Math.abs(profitData.priceChangePercent).toFixed(2)}% profit`);
+      }
     }
     
     if (position.trailingStopLoss.activated) {
+      // Cập nhật trailing stop nếu lợi nhuận tiếp tục tăng
       if (profitData.priceChangePercent < position.trailingStopLoss.highestProfit) {
         position.trailingStopLoss.highestProfit = profitData.priceChangePercent;
         const newStopPrice = currentPrice * (1 + STRATEGY_CONFIG.trailingStopLoss.trailDistancePercent / 100);
@@ -1688,10 +1771,11 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
         }
       }
 
+      // Kiểm tra trigger trailing SL
       if (currentPrice >= position.trailingStopLoss.currentStopPrice) {
         const remainingQty = position.positionSize - position.closedAmount;
         if (remainingQty > 0) {
-          console.log(`🛑 TRAILING SL TRIGGERED: ${symbol} | Current: ${currentPrice} | Stop: ${position.trailingStopLoss.currentStopPrice}`);
+          console.log(`🛑 TRAILING SL: ${symbol} | Triggered at ${currentPrice}`);
           
           const closeSuccess = await this.closePosition(symbol, remainingQty, 'SHORT', `TRAILING_SL`, position.positionId);
           if (closeSuccess) {
@@ -1713,6 +1797,14 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
   private async checkImmediateSLTP(symbol: string, position: PositionData, currentPrice: number): Promise<void> {
     const profitData = await this.calculateProfitAndPriceChange(position, currentPrice);
     
+    // KIỂM TRA STRONG DOWNTREND VÀ DOUBLE TP
+    if (STRATEGY_CONFIG.strongDowntrendConfig.doubleTpOnStrongDowntrend && !position.tpDoubled) {
+      const candles = await this.fetchKlineData(symbol, "Min5", 10);
+      if (this.detectStrongDowntrend(candles)) {
+        this.doubleTakeProfitLevels(position);
+      }
+    }
+
     for (let i = 0; i < position.takeProfitLevels.length; i++) {
       const level = position.takeProfitLevels[i];
       if (!level.executed) {
@@ -1727,7 +1819,8 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
           closeQty = Math.min(closeQty, remainingQty);
           
           if (closeQty > 0) {
-            console.log(`🎯 TP ${i+1} TRIGGERED: ${symbol} | Target: ${level.priceChangePercent}% | Current: ${profitData.priceChangePercent.toFixed(2)}%`);
+            // LOG QUAN TRỌNG: Take Profit
+            console.log(`🎯 TP${i+1}: ${symbol} | ${level.priceChangePercent}% target hit`);
             
             const closeSuccess = await this.closePosition(symbol, closeQty, 'SHORT', `TP${i+1}`, position.positionId);
             if (closeSuccess) {
@@ -1763,7 +1856,8 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
           closeQty = Math.min(closeQty, remainingQty);
           
           if (closeQty > 0) {
-            console.log(`🛑 SL ${i+1} TRIGGERED: ${symbol} | Stop: ${level.priceChangePercent}% | Current: ${profitData.priceChangePercent.toFixed(2)}%`);
+            // LOG QUAN TRỌNG: Stop Loss
+            console.log(`🛑 SL${i+1}: ${symbol} | ${level.priceChangePercent}% stop hit`);
             
             const closeSuccess = await this.closePosition(symbol, closeQty, 'SHORT', `SL${i+1}`, position.positionId);
             if (closeSuccess) {
@@ -1793,7 +1887,7 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
     const result = await this.openPosition(symbol, quantity, side, signalType);
     
     if (result.success && positionId && position) {
-      console.log(`✅ DCA ADDED to existing position: ${positionId}`);
+      // Giảm log chi tiết
     }
     
     return result.success;
@@ -1863,27 +1957,29 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
     }
   }
 
+  // CẬP NHẬT: Scan với ít log hơn
   async scanAndSelectTopCoins(): Promise<void> {
     const now = Date.now();
     
-    if (now - this.lastScanTime < 60000) {
+    if (now - this.lastScanTime < 20000) {
       return;
     }
 
     this.lastScanTime = now;
     const symbols = await this.getAllFuturePairs();
     
-    const candidateList: { symbol: string; coinData: CoinTrackingData }[] = [];
+    const symbolsToProcess = symbols.filter(symbol => 
+      !this.positions.has(symbol) && !this.trackingCoins.has(symbol)
+    );
 
-    const batchSize = 5;
-    for (let i = 0; i < symbols.length; i += batchSize) {
-      const batch = symbols.slice(i, i + batchSize);
-      const batchPromises = batch.map(async (symbol) => {
+    if (symbolsToProcess.length === 0) {
+      return;
+    }
+
+    const candidateList = await this.processInParallel(
+      symbolsToProcess,
+      async (symbol): Promise<{ symbol: string; coinData: CoinTrackingData } | null> => {
         try {
-          if (this.positions.has(symbol) || this.trackingCoins.has(symbol)) {
-            return null;
-          }
-
           const isOldEnough = await this.isCoinListedAtLeast20Days(symbol);
           if (!isOldEnough) {
             return null;
@@ -1947,16 +2043,8 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
         } catch (error) {
           return null;
         }
-      });
-
-      const batchResults = await Promise.all(batchPromises);
-      const validResults = batchResults.filter(result => result !== null) as { symbol: string; coinData: CoinTrackingData }[];
-      candidateList.push(...validResults);
-
-      if (i + batchSize < symbols.length) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
       }
-    }
+    );
 
     candidateList.sort((a, b) => b.coinData.confidence - a.coinData.confidence);
     const topCandidates = candidateList.slice(0, 15);
@@ -1965,6 +2053,11 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
     topCandidates.forEach(candidate => {
       this.candidateCoins.set(candidate.symbol, candidate.coinData);
     });
+
+    // Giảm log kết quả scan
+    if (candidateList.length > 0) {
+      console.log(`✅ Found ${candidateList.length} potential coins`);
+    }
   }
 
   private updateTrackingList(): void {
@@ -1979,7 +2072,8 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
     coinsToAdd.forEach(([symbol, coinData]) => {
       this.trackingCoins.set(symbol, coinData);
       this.candidateCoins.delete(symbol);
-      console.log(`🔍 TRACKING: ${symbol} | Pump: ${coinData.pumpPercent.toFixed(1)}% (${coinData.pumpDurationCandles}nến) | Retrace: ${coinData.dropFromPeak.toFixed(1)}%/${coinData.requiredRetracePercent}% | Confidence: ${coinData.confidence}% | Risk: ${coinData.riskLevel} | Patterns: ${coinData.bearishPatterns.join(', ')}`);
+      // Giảm log tracking chi tiết
+      console.log(`📊 Tracking: ${symbol} | Pump: ${coinData.pumpPercent.toFixed(1)}% | Confidence: ${coinData.confidence}%`);
     });
   }
 
@@ -2014,7 +2108,7 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
         coinData.resistanceLevel = indicators.resistanceLevel;
         coinData.supportLevel = indicators.supportLevel;
         coinData.hasEntrySignal = indicators.hasEntrySignal;
-        coinData.signalType = indicators.signalType;
+        coinData.signalType= indicators.signalType;
         coinData.strengthScore = indicators.strengthScore;
         coinData.fakePumpSignal = indicators.fakePumpSignal;
         coinData.pumpPercent = indicators.pumpPercent;
@@ -2040,15 +2134,14 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
         coinData.requiredRetracePercent = indicators.requiredRetracePercent;
 
         if (coinData.hasEntrySignal && coinData.status === 'TRACKING') {
-          console.log(`🎯 ENTRY SIGNAL: ${symbol} | ${coinData.signalType} | Pump: ${coinData.pumpPercent.toFixed(1)}% (${coinData.pumpDurationCandles}nến) | Retrace: ${coinData.dropFromPeak.toFixed(1)}%/${coinData.requiredRetracePercent}% | Confidence: ${coinData.confidence}%`);
-          console.log(`   📉 Reversal Reasons: ${coinData.reversalReasons.join(', ')}`);
-          console.log(`   🎯 Risk Level: ${coinData.riskLevel} | Patterns: ${coinData.bearishPatterns.join(', ')}`);
+          // LOG QUAN TRỌNG: Tín hiệu vào lệnh
+          console.log(`🎯 SIGNAL: ${symbol} | ${coinData.signalType} | Confidence: ${coinData.confidence}%`);
           
           coinData.status = 'READY_TO_ENTER';
         }
 
         if (coinData.status === 'READY_TO_ENTER') {
-          console.log(`🚀 ENTERING POSITION: ${symbol} | ${coinData.signalType}`);
+          console.log(`🚀 ENTERING: ${symbol} | ${coinData.signalType}`);
           
           await this.enterPosition(symbol, coinData.signalType, coinData.confidence, coinData.riskLevel);
           coinData.status = 'ENTERED';
@@ -2067,11 +2160,8 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
     }
   }
 
-  // CẢI THIỆN HÀM VÀO VỊ THẾ - KHÔNG VÀO LỆNH NẾU RISK HIGH
   async enterPosition(symbol: string, signalType: string, confidence: number, riskLevel: string): Promise<void> {
-    // ĐIỀU KIỆN MỚI: KHÔNG VÀO LỆNH NẾU RISK LEVEL HIGH
     if (riskLevel === 'HIGH') {
-      console.log(`🚫 SKIPPING ENTRY: ${symbol} - Risk level is HIGH`);
       return;
     }
 
@@ -2115,7 +2205,6 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
 
       const maxDcaVolume = await this.calculatePositionSize(symbol, 0.6, confidence);
 
-      // KHỞI TẠO originalTakeProfitLevels và originalStopLossLevels NGAY TỪ ĐẦU
       const position: PositionData = {
         symbol,
         entryPrice: actualPrice,
@@ -2140,12 +2229,13 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
           activationPrice: 0,
           currentStopPrice: 0,
           highestProfit: 0,
-          activated: false
+          activated: false,
+          peakProfitReached: false
         } : undefined,
         pendingDcaOrders: new Map(),
         sltpRecalculated: false,
-        originalTakeProfitLevels: JSON.parse(JSON.stringify(takeProfitLevels)), // KHỞI TẠO NGAY
-        originalStopLossLevels: JSON.parse(JSON.stringify(stopLossLevels)), // KHỞI TẠO NGAY
+        originalTakeProfitLevels: JSON.parse(JSON.stringify(takeProfitLevels)),
+        originalStopLossLevels: JSON.parse(JSON.stringify(stopLossLevels)),
         consecutiveDcaCount: 0,
         aggressiveDcaMode: false,
         totalDcaVolume: 0,
@@ -2154,16 +2244,16 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
         peakPrice: actualPrice * 1.05,
         positiveDcaCount: 0,
         extendedTpLevels: [],
-        initialStopLossLevels: JSON.parse(JSON.stringify(stopLossLevels)), // LƯU SL BAN ĐẦU
-        adjustedStopLossLevels: JSON.parse(JSON.stringify(stopLossLevels)) // SL ĐIỀU CHỈNH
+        initialStopLossLevels: JSON.parse(JSON.stringify(stopLossLevels)),
+        adjustedStopLossLevels: JSON.parse(JSON.stringify(stopLossLevels)),
+        peakProfit: 0,
+        tpDoubled: false
       };
 
       this.positions.set(symbol, position);
 
-      console.log(`✅ POSITION OPENED: ${symbol} | Size: ${initialQty} | Entry: ${actualPrice} | Signal: ${signalType} | Confidence: ${confidence}% | Risk: ${riskLevel} | RealPositionID: ${openResult.realPositionId || 'Not found'}`);
-
     } catch (error) {
-      console.error(`❌ Position Opening Error: ${symbol}`, error);
+      console.error(`❌ ENTRY ERROR: ${symbol}`, error);
     }
   }
 
@@ -2174,8 +2264,6 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
     this.lastDcaScan = now;
 
     if (this.positions.size === 0) return;
-
-    console.log(`🔍 SCANNING DCA OPPORTUNITIES: ${this.positions.size} positions`);
 
     for (const [symbol, position] of this.positions.entries()) {
       try {
@@ -2286,6 +2374,7 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
     });
   }
 
+  // CẬP NHẬT: Hiển thị status với ít log hơn
   async displayStatus(): Promise<void> {
     const now = Date.now();
     if (now - this.lastStatusDisplay < this.statusDisplayInterval) {
@@ -2293,78 +2382,39 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
     }
 
     this.lastStatusDisplay = now;
-    console.log(`\n📊 [${new Date().toLocaleTimeString()}] STATUS:`);
-    console.log(`   💰 Balance: ${this.accountBalance.toFixed(2)} USDT`);
-    console.log(`   🔍 Tracking: ${this.trackingCoins.size} coins`);
-    console.log(`   💼 Positions: ${this.positions.size}`);
-    console.log(`   📈 Orders: ${this.totalOrders}`);
-    console.log(`   💵 PnL: ${this.totalProfit.toFixed(2)} USDT`);
+    
+    console.log(`\n📊 STATUS: Balance: $${this.accountBalance.toFixed(2)} | Positions: ${this.positions.size} | PnL: $${this.totalProfit.toFixed(2)}`);
     
     if (this.positions.size > 0) {
-      console.log(`\n💼 ACTIVE POSITIONS:`);
       for (const [symbol, position] of this.positions.entries()) {
         const currentPrice = await this.getCurrentPrice(symbol);
         const profitData = await this.calculateProfitAndPriceChange(position, currentPrice);
         const status = profitData.profit >= 0 ? 'PROFIT' : 'LOSS';
         const closedPercent = ((position.closedAmount / position.positionSize) * 100).toFixed(1);
         
-        let trailingInfo = '';
-        if (position.trailingStopLoss?.activated) {
-          trailingInfo = ` | 🛡️ Trailing SL: ${position.trailingStopLoss.currentStopPrice}`;
-        }
-        
-        let dcaInfo = '';
+        let extraInfo = '';
         if (position.dcaCount > 0) {
-          dcaInfo = ` | DCA: ${position.dcaCount}/${STRATEGY_CONFIG.maxDcaTimes}`;
+          extraInfo += ` | DCA:${position.dcaCount}`;
         }
-
-        let positiveDcaInfo = '';
         if (position.positiveDcaCount > 0) {
-          positiveDcaInfo = ` | 🚀 Positive DCA: ${position.positiveDcaCount}`;
+          extraInfo += ` | +DCA:${position.positiveDcaCount}`;
         }
-
-        let extendedTpInfo = '';
-        if (position.extendedTpLevels.length > 0) {
-          const totalExtended = position.extendedTpLevels.reduce((a, b) => a + b, 0);
-          extendedTpInfo = ` | 🎯 Extended TP: +${totalExtended.toFixed(1)}%`;
-        }
-
-        let positionIdInfo = '';
-        if (position.realPositionId) {
-          positionIdInfo = ` | RealPosID: ${position.realPositionId}`;
-        }
-
-        let confidenceInfo = '';
-        if (position.confidence) {
-          confidenceInfo = ` | Confidence: ${position.confidence}%`;
-        }
-
-        // HIỂN THỊ THÔNG TIN SL ĐIỀU CHỈNH
-        let adjustedSLInfo = '';
-        if (position.adjustedStopLossLevels && position.dcaCount > 0) {
-          const originalSL = position.initialStopLossLevels?.[0]?.priceChangePercent || 0;
-          const currentSL = position.adjustedStopLossLevels[0]?.priceChangePercent || 0;
-          if (currentSL > originalSL) {
-            adjustedSLInfo = ` | 🛡️ SL: ${originalSL.toFixed(1)}% → ${currentSL.toFixed(1)}%`;
-          }
+        if (position.tpDoubled) {
+          extraInfo += ` | 2xTP`;
         }
         
-        console.log(`   ${symbol}: ${status} $${profitData.profit.toFixed(2)} (${profitData.priceChangePercent.toFixed(1)}%) | Closed: ${closedPercent}%${dcaInfo}${positiveDcaInfo}${extendedTpInfo}${adjustedSLInfo}${trailingInfo}${positionIdInfo}${confidenceInfo}`);
+        console.log(`   ${symbol}: ${status} $${profitData.profit.toFixed(2)} (${profitData.priceChangePercent.toFixed(1)}%) | Closed: ${closedPercent}%${extraInfo}`);
       }
     }
     console.log('');
   }
 
   async run(): Promise<void> {
-    console.log('🚀 Starting ENHANCED FAKE PUMP STRATEGY BOT');
-    console.log('🎯 ENTRY: Pump 15% + Reversal từ đỉnh (Điều kiện mới)');
-    console.log('📊 PUMP NHANH (3 nến): Cần giảm 5% từ đỉnh');
-    console.log('📊 PUMP CHẬM (>3 nến): Cần giảm 3% từ đỉnh');
-    console.log('🚫 KHÔNG VÀO LỆNH NẾU RISK LEVEL: HIGH');
-    console.log('💰 DCA: Thêm vào khi giá đi ngược hướng + TÍNH LẠI SL');
-    console.log('🚀 DCA DƯƠNG: Nhồi thêm lệnh khi giá giảm mạnh & dời TP xa hơn');
-    console.log('⏰ FILTER: Coin phải list ít nhất 20 ngày');
-    console.log('🛡️ Risk Management: Confidence-based position sizing + Dynamic SL after DCA');
+    console.log('🚀 FAKE PUMP STRATEGY BOT STARTED');
+    console.log('🎯 ENTRY: Pump 15% + Reversal');
+    console.log('💰 POSITION: 15% of initial balance');
+    console.log('🛡️ TRAILING SL: Min 10% profit to activate');
+    console.log('🎯 DOUBLE TP: On strong downtrend');
     
     await this.fetchBinanceSymbols();
     
@@ -2376,7 +2426,7 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
       return;
     }
     
-    console.log(`💰 Initial Balance: ${this.initialBalance.toFixed(2)} USDT\n`);
+    console.log(`💰 Initial Balance: $${this.initialBalance.toFixed(2)}\n`);
     
     this.isRunning = true;
 
@@ -2419,7 +2469,7 @@ private recalculateStopLossAfterDCA(position: PositionData): void {
       this.realTimeMonitorInterval = null;
     }
     
-    console.log(`\n🛑 Bot stopped | Total Orders: ${this.totalOrders} | Total PnL: ${this.totalProfit.toFixed(2)} USDT`);
+    console.log(`\n🛑 Bot stopped | Orders: ${this.totalOrders} | PnL: $${this.totalProfit.toFixed(2)}`);
   }
 }
 
