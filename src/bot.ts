@@ -14,7 +14,6 @@ const client = new MexcFuturesClient({
   baseURL: "https://contract.mexc.com/api/v1",
 });
 
-
 interface Order {
   orderId: string;
   symbol: string;
@@ -29,8 +28,8 @@ interface Order {
 }
 
 const STRATEGY_CONFIG = {
-  initialPositionPercent: 0.15,
-  maxTotalPositionPercent: 0.6,
+  initialPositionPercent: 0.1, // Đã sửa từ 0.15 xuống 0.1 (10%)
+  maxTotalPositionPercent: 0.3, // Giảm từ 0.6 xuống 0.3 để phù hợp với 3 lần DCA
   takeProfitLevels: [
     { priceChangePercent: 3.0, closeRatio: 0.4 },
     { priceChangePercent: 6.0, closeRatio: 0.4 },
@@ -40,34 +39,32 @@ const STRATEGY_CONFIG = {
     { priceChangePercent: 2.0, closeRatio: 0.5 },
     { priceChangePercent: 4.0, closeRatio: 0.5 }
   ],
-  maxVolume24h: 10000000, // 10 triệu USDT - ĐIỀU KIỆN BẮT BUỘC
+  maxVolume24h: 10000000,
   minVolume24h: 100000,
   fakePumpMinPercent: 15,
   volumeSpikeThreshold: 2.5,
   maxActivePositions: 3,
   maxTrackingCoins: 10,
-  minAccountBalancePercent: 0.15,
+  minAccountBalancePercent: 0.1, // Giảm từ 0.15 xuống 0.1
   emaPeriod: 21,
   resistanceLookback: 20,
   volumeDropThreshold: 0.6,
-  dcaLevels: [
-    { priceChangePercent: 0.8, addRatio: 0.15, condition: 'MICRO_PULLBACK' },
-    { priceChangePercent: 1.5, addRatio: 0.15, condition: 'RESISTANCE_TOUCH' },
-    { priceChangePercent: 2.5, addRatio: 0.15, condition: 'EMA_RESISTANCE' },
-    { priceChangePercent: 4.0, addRatio: 0.15, condition: 'STRONG_RESISTANCE' }
+  dcaLevels: [ // Giảm từ 4 xuống 3 mức DCA
+    { priceChangePercent: 0.8, addRatio: 0.1, condition: 'MICRO_PULLBACK' }, // Giảm addRatio từ 0.15 xuống 0.1
+    { priceChangePercent: 1.5, addRatio: 0.1, condition: 'RESISTANCE_TOUCH' },
+    { priceChangePercent: 2.5, addRatio: 0.1, condition: 'STRONG_RESISTANCE' }
   ],
-  positiveDcaLevels: [
-    { profitPercent: 2.0, addRatio: 0.15, extendTpPercent: 2.0 },
-    { profitPercent: 4.0, addRatio: 0.15, extendTpPercent: 3.0 },
-    { profitPercent: 7.0, addRatio: 0.15, extendTpPercent: 4.0 },
-    { profitPercent: 11.0, addRatio: 0.15, extendTpPercent: 5.0 }
+  positiveDcaLevels: [ // Giảm từ 4 xuống 3 mức DCA dương
+    { profitPercent: 2.0, addRatio: 0.1, extendTpPercent: 2.0 }, // Giảm addRatio từ 0.15 xuống 0.1
+    { profitPercent: 4.0, addRatio: 0.1, extendTpPercent: 3.0 },
+    { profitPercent: 7.0, addRatio: 0.1, extendTpPercent: 4.0 }
   ],
-  maxDcaTimes: 6, // Giảm số lần DCA để tránh vướng
+  maxDcaTimes: 3, // Giảm từ 6 xuống 3
   trailingStopLoss: {
     enabled: true,
-    minProfitToActivate: 12.0, // Tăng ngưỡng kích hoạt
+    minProfitToActivate: 12.0,
     activationCondition: 'HALF_PROFIT',
-    trailDistancePercent: 0.6, // Tăng khoảng cách trail
+    trailDistancePercent: 0.6,
     maxTrailDistancePercent: 4.0
   },
   strongDowntrendConfig: {
@@ -221,6 +218,7 @@ interface PositionData {
   tpDoubled?: boolean;
   currentTpLevels: number[];
   currentSlLevels: number[];
+  riskLevel: string; // Thêm riskLevel vào PositionData
 }
 
 interface TrackingData {
@@ -335,8 +333,11 @@ class FakePumpStrategyBot {
     console.log('🤖 FAKE PUMP STRATEGY BOT - ENHANCED REVERSAL MODE');
     console.log('🎯 ENTRY: Pump 15% + Reversal từ đỉnh');
     console.log('📊 VOLUME: < 10M USDT - BẮT BUỘC');
-    console.log('💰 VÀO LỆNH: 15% so với tổng tài sản ban đầu');
-    console.log('🔄 DCA: TP/SL được tính toán lại sau mỗi lần DCA');
+    console.log('💰 VÀO LỆNH: 10% so với tổng tài sản ban đầu'); // Đã cập nhật từ 15% xuống 10%
+    console.log('🔄 DCA: Tối đa 3 lần (cả âm và dương)'); // Đã cập nhật
+    console.log('🎯 TP/SL CHIẾN LƯỢC:');
+    console.log('   TP: ' + STRATEGY_CONFIG.takeProfitLevels.map(tp => `-${tp.priceChangePercent}% (${tp.closeRatio * 100}%)`).join(', '));
+    console.log('   SL: Tùy theo Risk Level');
     console.log('⏰ ĐIỀU KIỆN: Coin trên 14 ngày & Risk Level không phải HIGH');
   }
 
@@ -867,14 +868,11 @@ class FakePumpStrategyBot {
     };
   }
 
-
-  // HÀM MỚI: Tính toán TP/SL thông minh sau DCA
   private calculateSmartTPSLAfterDCA(position: PositionData, currentPrice: number): { tpLevels: TakeProfitLevel[], slLevels: StopLossLevel[] } {
     const remainingQty = position.totalQty - position.closedAmount;
     
-    // Điều chỉnh TP levels dựa trên số lần DCA
-    const tpMultiplier = 1 + (position.dcaCount * 0.1); // Tăng TP sau mỗi lần DCA
-    const slMultiplier = 1 + (position.dcaCount * 0.05); // Tăng SL ít hơn
+    const tpMultiplier = 1 + (position.dcaCount * 0.1);
+    const slMultiplier = 1 + (position.dcaCount * 0.05);
     
     const tpLevels: TakeProfitLevel[] = STRATEGY_CONFIG.takeProfitLevels.map((level, index) => {
       const adjustedPercent = level.priceChangePercent * tpMultiplier;
@@ -889,30 +887,73 @@ class FakePumpStrategyBot {
       };
     });
 
-    const slLevels: StopLossLevel[] = STRATEGY_CONFIG.stopLossLevels.map((level, index) => {
-      const adjustedPercent = level.priceChangePercent * slMultiplier;
-      const absolutePrice = position.averagePrice * (1 + adjustedPercent / 100);
-      
-      return {
-        ...level,
-        priceChangePercent: adjustedPercent,
-        executed: false,
-        quantity: remainingQty * level.closeRatio,
-        absolutePrice: absolutePrice
-      };
-    });
+    const slLevels: StopLossLevel[] = this.setupStopLossByRiskLevel(
+      position.riskLevel,
+      position.averagePrice,
+      remainingQty
+    );
 
     return { tpLevels, slLevels };
   }
 
-  // HÀM MỚI: Gửi thông báo cập nhật TP/SL
+  private setupStopLossByRiskLevel(
+    riskLevel: string, 
+    actualPrice: number, 
+    initialQty: number
+  ): StopLossLevel[] {
+    if (riskLevel === 'MEDIUM') {
+      // MEDIUM: Stop Loss duy nhất ở 4%
+      return [
+        {
+          priceChangePercent: 4.0,
+          closeRatio: 1.0, // Đóng toàn bộ
+          executed: false,
+          quantity: initialQty,
+          absolutePrice: actualPrice * (1 + 4.0 / 100)
+        }
+      ];
+    } else if (riskLevel === 'LOW') {
+      // LOW: 2 mức stop loss: 7% (50%) và 10% (50%)
+      return [
+        {
+          priceChangePercent: 7.0,
+          closeRatio: 0.5, // 50% lệnh
+          executed: false,
+          quantity: initialQty * 0.5,
+          absolutePrice: actualPrice * (1 + 7.0 / 100)
+        },
+        {
+          priceChangePercent: 10.0,
+          closeRatio: 0.5, // 50% lệnh còn lại
+          executed: false,
+          quantity: initialQty * 0.5,
+          absolutePrice: actualPrice * (1 + 10.0 / 100)
+        }
+      ];
+    } else {
+      // HIGH hoặc mặc định: sử dụng stop loss từ config
+      return STRATEGY_CONFIG.stopLossLevels.map(level => {
+        const absolutePrice = actualPrice * (1 + level.priceChangePercent / 100);
+        return { 
+          ...level, 
+          executed: false,
+          quantity: initialQty * level.closeRatio,
+          absolutePrice
+        };
+      });
+    }
+  }
+
   private async sendTPSLUpdateAlert(position: PositionData): Promise<void> {
     try {
+      if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
+
       const message = 
         `🔄 **CẬP NHẬT TP/SL**: ${position.symbol}\n` +
         `💰 Giá trung bình: $${position.averagePrice.toFixed(6)}\n` +
         `📊 Khối lượng: ${position.totalQty.toFixed(2)} contracts\n` +
-        `🔄 Số lần DCA: ${position.dcaCount}\n\n` +
+        `🔄 Số lần DCA: ${position.dcaCount}\n` +
+        `🎯 Risk Level: ${position.riskLevel}\n\n` +
         `🎯 **TAKE PROFIT**:\n` +
         position.takeProfitLevels.map((level, i) => 
           `• TP${i+1}: ${level.priceChangePercent.toFixed(1)}% ($${level.absolutePrice?.toFixed(6)}) - ${(level.closeRatio * 100).toFixed(0)}%`
@@ -921,8 +962,53 @@ class FakePumpStrategyBot {
         position.stopLossLevels.map((level, i) => 
           `• SL${i+1}: ${level.priceChangePercent.toFixed(1)}% ($${level.absolutePrice?.toFixed(6)}) - ${(level.closeRatio * 100).toFixed(0)}%`
         ).join('\n');
+
+      await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        chat_id: TELEGRAM_CHAT_ID,
+        text: message,
+        parse_mode: 'Markdown'
+      });
+      
     } catch (error) {
       console.error('Lỗi gửi thông báo TP/SL:', error);
+    }
+  }
+
+  private async sendEntryAlert(position: PositionData, currentPrice: number): Promise<void> {
+    try {
+      if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
+
+      const tp1Price = currentPrice * (1 - STRATEGY_CONFIG.takeProfitLevels[0].priceChangePercent / 100);
+      const tp2Price = currentPrice * (1 - STRATEGY_CONFIG.takeProfitLevels[1].priceChangePercent / 100);
+      const tp3Price = currentPrice * (1 - STRATEGY_CONFIG.takeProfitLevels[2].priceChangePercent / 100);
+      
+      const slText = position.riskLevel === 'MEDIUM' 
+        ? `• SL: +4.0% ($${(currentPrice * 1.04).toFixed(6)}) - 100%`
+        : position.riskLevel === 'LOW'
+        ? `• SL1: +7.0% ($${(currentPrice * 1.07).toFixed(6)}) - 50%\n• SL2: +10.0% ($${(currentPrice * 1.10).toFixed(6)}) - 50%`
+        : `• SL1: +${STRATEGY_CONFIG.stopLossLevels[0].priceChangePercent}% ($${(currentPrice * (1 + STRATEGY_CONFIG.stopLossLevels[0].priceChangePercent / 100)).toFixed(6)}) - ${(STRATEGY_CONFIG.stopLossLevels[0].closeRatio * 100).toFixed(0)}%\n• SL2: +${STRATEGY_CONFIG.stopLossLevels[1].priceChangePercent}% ($${(currentPrice * (1 + STRATEGY_CONFIG.stopLossLevels[1].priceChangePercent / 100)).toFixed(6)}) - ${(STRATEGY_CONFIG.stopLossLevels[1].closeRatio * 100).toFixed(0)}%`;
+
+      const message = 
+        `🎯 **VÀO LỆNH SHORT**: ${position.symbol}\n` +
+        `💰 Entry: $${currentPrice.toFixed(6)}\n` +
+        `📊 Khối lượng: ${position.totalQty.toFixed(2)} contracts\n` +
+        `🎯 Signal: ${position.signalType}\n` +
+        `📈 Confidence: ${position.confidence}%\n` +
+        `⚠️ Risk Level: ${position.riskLevel}\n\n` +
+        `🎯 **CHIẾN LƯỢC TP/SL**:\n` +
+        `• TP1: -${STRATEGY_CONFIG.takeProfitLevels[0].priceChangePercent}% ($${tp1Price.toFixed(6)}) - ${(STRATEGY_CONFIG.takeProfitLevels[0].closeRatio * 100).toFixed(0)}%\n` +
+        `• TP2: -${STRATEGY_CONFIG.takeProfitLevels[1].priceChangePercent}% ($${tp2Price.toFixed(6)}) - ${(STRATEGY_CONFIG.takeProfitLevels[1].closeRatio * 100).toFixed(0)}%\n` +
+        `• TP3: -${STRATEGY_CONFIG.takeProfitLevels[2].priceChangePercent}% ($${tp3Price.toFixed(6)}) - ${(STRATEGY_CONFIG.takeProfitLevels[2].closeRatio * 100).toFixed(0)}%\n` +
+        `${slText}`;
+
+      await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        chat_id: TELEGRAM_CHAT_ID,
+        text: message,
+        parse_mode: 'Markdown'
+      });
+      
+    } catch (error) {
+      console.error('Lỗi gửi thông báo vào lệnh:', error);
     }
   }
 
@@ -932,7 +1018,6 @@ class FakePumpStrategyBot {
     if (reversalSignal.shouldTrack && !reversalSignal.isTracked) {
       const listingAgeDays = await this.getListingAgeDays(symbol);
       
-      // KIỂM TRA VOLUME 24H - ĐIỀU KIỆN BẮT BUỘC
       const volume24h = this.calculateRealVolume24h(candles);
       if (volume24h > STRATEGY_CONFIG.maxVolume24h) {
         console.log(`⚠️ Bỏ qua ${symbol} do volume 24h quá cao: ${(volume24h / 1000000).toFixed(2)}M`);
@@ -969,7 +1054,6 @@ class FakePumpStrategyBot {
         return false;
       }
 
-      // KIỂM TRA VOLUME LẦN NỮA
       const volume24h = this.calculateRealVolume24h(candles);
       if (volume24h > STRATEGY_CONFIG.maxVolume24h) {
         console.log(`⚠️ Bỏ qua ${symbol} do volume 24h quá cao: ${(volume24h / 1000000).toFixed(2)}M`);
@@ -1034,7 +1118,6 @@ class FakePumpStrategyBot {
       return { hasSignal: false, signalType: '', side: 'SHORT', confidence: 0, riskLevel: 'HIGH' };
     }
 
-    // KIỂM TRA VOLUME 24H - ĐIỀU KIỆN BẮT BUỘC
     const volumeCondition = volume24h >= STRATEGY_CONFIG.minVolume24h && volume24h <= STRATEGY_CONFIG.maxVolume24h;
     if (!volumeCondition) {
       return { hasSignal: false, signalType: '', side: 'SHORT', confidence: 0, riskLevel: 'HIGH' };
@@ -1250,7 +1333,6 @@ class FakePumpStrategyBot {
       const dailyVolatility = this.calculateDailyVolatility(candles);
       const volume24h = this.calculateRealVolume24h(candles);
       
-      // KIỂM TRA VOLUME - ĐIỀU KIỆN BẮT BUỘC
       const hasVolumeConfirmation = volume24h >= STRATEGY_CONFIG.minVolume24h && volume24h <= STRATEGY_CONFIG.maxVolume24h;
       
       const volumes = candles.map(k => k.volume);
@@ -1397,14 +1479,12 @@ class FakePumpStrategyBot {
     return Math.floor(volume / stepSize) * stepSize;
   }
 
-  // CẬP NHẬT: Tính toán lại TP/SL thông minh sau DCA
   private recalculateTPSLAfterDCA(position: PositionData, currentPrice: number): void {
     const { tpLevels, slLevels } = this.calculateSmartTPSLAfterDCA(position, currentPrice);
     
     position.takeProfitLevels = tpLevels;
     position.stopLossLevels = slLevels;
     
-    // Lưu lại các levels hiện tại để theo dõi
     position.currentTpLevels = tpLevels.map(tp => tp.priceChangePercent);
     position.currentSlLevels = slLevels.map(sl => sl.priceChangePercent);
     
@@ -1783,7 +1863,6 @@ class FakePumpStrategyBot {
                 position.lastPositiveDcaTime = Date.now();
                 position.totalDcaVolume += positiveDcaQty;
 
-                // CẬP NHẬT: Tính toán lại TP/SL sau DCA
                 this.recalculateTPSLAfterDCA(position, currentPrice);
                 
                 if (position.trailingStopLoss) {
@@ -1796,7 +1875,6 @@ class FakePumpStrategyBot {
                 
                 console.log(`🚀 POSITIVE DCA: ${symbol} | +${positiveDcaQty} contracts | Profit: ${Math.abs(profitData.priceChangePercent).toFixed(2)}%`);
 
-                // GỬI THÔNG BÁO CẬP NHẬT TP/SL
                 await this.sendTPSLUpdateAlert(position);
 
                 this.pendingDcaOrders.delete(dcaOrderId);
@@ -1877,7 +1955,6 @@ class FakePumpStrategyBot {
                 position.lastDcaTime = Date.now();
                 position.totalDcaVolume += dcaQty;
 
-                // CẬP NHẬT: Tính toán lại TP/SL sau DCA
                 this.recalculateTPSLAfterDCA(position, currentPrice);
                 
                 if (position.trailingStopLoss) {
@@ -1890,7 +1967,6 @@ class FakePumpStrategyBot {
                 
                 console.log(`💰 DCA: ${symbol} | +${dcaQty} contracts | DCA Count: ${position.dcaCount}`);
 
-                // GỬI THÔNG BÁO CẬP NHẬT TP/SL
                 await this.sendTPSLUpdateAlert(position);
 
                 this.pendingDcaOrders.delete(dcaOrderId);
@@ -2197,7 +2273,6 @@ class FakePumpStrategyBot {
 
           const indicators = await this.calculateEnhancedIndicators(symbol);
           
-          // KIỂM TRA VOLUME 24H - ĐIỀU KIỆN BẮT BUỘC
           const meetsVolume = indicators.volume24h >= STRATEGY_CONFIG.minVolume24h && indicators.volume24h <= STRATEGY_CONFIG.maxVolume24h;
           const hasReversal = indicators.reversalSignal && indicators.confidence >= 50;
           const isNotHighRisk = indicators.riskLevel !== 'HIGH';
@@ -2310,7 +2385,6 @@ class FakePumpStrategyBot {
           continue;
         }
 
-        // KIỂM TRA VOLUME LẦN NỮA
         if (indicators.volume24h > STRATEGY_CONFIG.maxVolume24h) {
           console.log(`⚠️ Bỏ qua ${symbol} do volume 24h quá cao: ${(indicators.volume24h / 1000000).toFixed(2)}M`);
           this.trackingCoins.delete(symbol);
@@ -2420,15 +2494,7 @@ class FakePumpStrategyBot {
         };
       });
       
-      const stopLossLevels: StopLossLevel[] = STRATEGY_CONFIG.stopLossLevels.map(level => {
-        const absolutePrice = actualPrice * (1 + level.priceChangePercent / 100);
-        return { 
-          ...level, 
-          executed: false,
-          quantity: initialQty * level.closeRatio,
-          absolutePrice
-        };
-      });
+      const stopLossLevels: StopLossLevel[] = this.setupStopLossByRiskLevel(riskLevel, actualPrice, initialQty);
 
       const dcaLevels: DcaLevel[] = STRATEGY_CONFIG.dcaLevels.map(level => ({ 
         ...level, 
@@ -2441,7 +2507,7 @@ class FakePumpStrategyBot {
         executed: false
       }));
 
-      const maxDcaVolume = await this.calculatePositionSize(symbol, 0.6, confidence);
+      const maxDcaVolume = await this.calculatePositionSize(symbol, 0.3, confidence);
 
       const position: PositionData = {
         symbol,
@@ -2487,13 +2553,13 @@ class FakePumpStrategyBot {
         peakProfit: 0,
         tpDoubled: false,
         currentTpLevels: takeProfitLevels.map(tp => tp.priceChangePercent),
-        currentSlLevels: stopLossLevels.map(sl => sl.priceChangePercent)
+        currentSlLevels: stopLossLevels.map(sl => sl.priceChangePercent),
+        riskLevel: riskLevel // Thêm riskLevel vào position
       };
 
       this.positions.set(symbol, position);
 
-      // Gửi thông báo vào lệnh với TP/SL
-      await this.sendTPSLUpdateAlert(position);
+      await this.sendEntryAlert(position, actualPrice);
 
     } catch (error) {
       console.error(`❌ ENTRY ERROR: ${symbol}`, error);
@@ -2645,9 +2711,8 @@ class FakePumpStrategyBot {
           extraInfo += ` | 2xTP`;
         }
         
-        console.log(`   ${symbol}: ${status} $${profitData.profit.toFixed(2)} (${profitData.priceChangePercent.toFixed(1)}%) | Closed: ${closedPercent}%${extraInfo}`);
+        console.log(`   ${symbol}: ${status} $${profitData.profit.toFixed(2)} (${profitData.priceChangePercent.toFixed(1)}%) | Closed: ${closedPercent}% | Risk: ${position.riskLevel}${extraInfo}`);
         
-        // Hiển thị TP/SL levels hiện tại
         if (position.currentTpLevels && position.currentSlLevels) {
           console.log(`     TP: ${position.currentTpLevels.map(tp => tp.toFixed(1) + '%').join(', ')}`);
           console.log(`     SL: ${position.currentSlLevels.map(sl => sl.toFixed(1) + '%').join(', ')}`);
@@ -2670,8 +2735,11 @@ class FakePumpStrategyBot {
     console.log('🚀 FAKE PUMP STRATEGY BOT STARTED');
     console.log('🎯 ENTRY: Pump 15% + Reversal');
     console.log('📊 VOLUME: < 10M USDT - BẮT BUỘC');
-    console.log('💰 POSITION: 15% of initial balance');
-    console.log('🔄 DCA: TP/SL được tính toán lại sau mỗi lần DCA');
+    console.log('💰 POSITION: 10% of initial balance'); // Đã cập nhật từ 15% xuống 10%
+    console.log('🔄 DCA: Tối đa 3 lần (cả âm và dương)'); // Đã cập nhật
+    console.log('🎯 TP/SL CHIẾN LƯỢC:');
+    console.log('   TP: ' + STRATEGY_CONFIG.takeProfitLevels.map(tp => `-${tp.priceChangePercent}% (${tp.closeRatio * 100}%)`).join(', '));
+    console.log('   SL: Tùy theo Risk Level');
     console.log('⏰ CONDITIONS: Coin age > 14 days & Risk Level not HIGH');
     
     await this.fetchBinanceSymbols();
