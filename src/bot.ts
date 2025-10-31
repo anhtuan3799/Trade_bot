@@ -5,8 +5,6 @@ import axios from "axios";
 dotenv.config();
 
 const WEB_TOKEN = process.env.MEXC_AUTH_TOKEN ?? "";
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? "";
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID ?? "";
 const LEVERAGE = 20;
 
 const client = new MexcFuturesClient({
@@ -28,8 +26,8 @@ interface Order {
 }
 
 const STRATEGY_CONFIG = {
-  initialPositionPercent: 0.1, // Đã sửa từ 0.15 xuống 0.1 (10%)
-  maxTotalPositionPercent: 0.3, // Giảm từ 0.6 xuống 0.3 để phù hợp với 3 lần DCA
+  initialPositionPercent: 0.5, 
+  maxTotalPositionPercent: 0.3,
   takeProfitLevels: [
     { priceChangePercent: 3.0, closeRatio: 0.4 },
     { priceChangePercent: 6.0, closeRatio: 0.4 },
@@ -45,21 +43,21 @@ const STRATEGY_CONFIG = {
   volumeSpikeThreshold: 2.5,
   maxActivePositions: 3,
   maxTrackingCoins: 10,
-  minAccountBalancePercent: 0.1, // Giảm từ 0.15 xuống 0.1
+  minAccountBalancePercent: 0.1,
   emaPeriod: 21,
   resistanceLookback: 20,
   volumeDropThreshold: 0.6,
-  dcaLevels: [ // Giảm từ 4 xuống 3 mức DCA
-    { priceChangePercent: 0.8, addRatio: 0.1, condition: 'MICRO_PULLBACK' }, // Giảm addRatio từ 0.15 xuống 0.1
+  dcaLevels: [
+    { priceChangePercent: 0.8, addRatio: 0.1, condition: 'MICRO_PULLBACK' },
     { priceChangePercent: 1.5, addRatio: 0.1, condition: 'RESISTANCE_TOUCH' },
     { priceChangePercent: 2.5, addRatio: 0.1, condition: 'STRONG_RESISTANCE' }
   ],
-  positiveDcaLevels: [ // Giảm từ 4 xuống 3 mức DCA dương
-    { profitPercent: 2.0, addRatio: 0.1, extendTpPercent: 2.0 }, // Giảm addRatio từ 0.15 xuống 0.1
+  positiveDcaLevels: [
+    { profitPercent: 2.0, addRatio: 0.1, extendTpPercent: 2.0 },
     { profitPercent: 4.0, addRatio: 0.1, extendTpPercent: 3.0 },
     { profitPercent: 7.0, addRatio: 0.1, extendTpPercent: 4.0 }
   ],
-  maxDcaTimes: 3, // Giảm từ 6 xuống 3
+  maxDcaTimes: 3,
   trailingStopLoss: {
     enabled: true,
     minProfitToActivate: 12.0,
@@ -90,6 +88,30 @@ const STRATEGY_CONFIG = {
     strongReversalPct: -8,
     volumeSpikeRatio: 2.5,
     maxTrackingTime: 30 * 60 * 1000
+  },
+  // NEW STRATEGY CONFIG - STRICT VOLUME CONTROL
+  downtrendStrategy: {
+    enabled: true,
+    priceRange: {
+      min: 0.01,
+      max: 0.2
+    },
+    volumeRange: {
+      min: 10000, // 10k
+      max: 5000000 // 5M - STRICTLY ENFORCED
+    },
+    longTermTrend: {
+      smaPeriod: 50,
+      requiredBelow: true
+    },
+    entryConditions: {
+      priceBelowSMA20: true,
+      rsiOverbought: 60,
+      volumeSpike: 1.2,
+      sma5BelowSMA20: true,
+      minConditions: 3
+    },
+    rsiPeriod: 14
   }
 };
 
@@ -218,7 +240,7 @@ interface PositionData {
   tpDoubled?: boolean;
   currentTpLevels: number[];
   currentSlLevels: number[];
-  riskLevel: string; // Thêm riskLevel vào PositionData
+  riskLevel: string;
 }
 
 interface TrackingData {
@@ -273,6 +295,20 @@ interface CoinTrackingData {
   riskLevel: string;
   pumpDurationCandles: number;
   requiredRetracePercent: number;
+  sma5?: number;
+  sma20?: number;
+  sma50?: number;
+  rsi?: number;
+  volumeAvg?: number;
+  downtrendSignal?: boolean;
+  downtrendConditions?: {
+    priceBelowSMA20: boolean;
+    rsiOverbought: boolean;
+    volumeSpike: boolean;
+    sma5BelowSMA20: boolean;
+    longTermDowntrend: boolean;
+    conditionsMet: number;
+  };
 }
 
 class OrderManager {
@@ -305,6 +341,7 @@ class FakePumpStrategyBot {
   private trackingCoins: Map<string, CoinTrackingData> = new Map();
   private candidateCoins: Map<string, CoinTrackingData> = new Map();
   private pumpTrackingCoins: Map<string, TrackingData> = new Map();
+  private downtrendTrackingCoins: Map<string, CoinTrackingData> = new Map();
   private accountBalance: number = 0;
   private initialBalance: number = 0;
   private isRunning: boolean = false;
@@ -331,10 +368,11 @@ class FakePumpStrategyBot {
 
   constructor() {
     console.log('🤖 FAKE PUMP STRATEGY BOT - ENHANCED REVERSAL MODE');
-    console.log('🎯 ENTRY: Pump 15% + Reversal từ đỉnh');
+    console.log('🎯 STRATEGY 1: Pump 15% + Reversal từ đỉnh');
+    console.log('🎯 STRATEGY 2: Downtrend Coin (Price $0.01-$0.2, Volume 10k-5M)');
     console.log('📊 VOLUME: < 10M USDT - BẮT BUỘC');
-    console.log('💰 VÀO LỆNH: 10% so với tổng tài sản ban đầu'); // Đã cập nhật từ 15% xuống 10%
-    console.log('🔄 DCA: Tối đa 3 lần (cả âm và dương)'); // Đã cập nhật
+    console.log('💰 VÀO LỆNH: 10% so với tổng tài sản ban đầu');
+    console.log('🔄 DCA: Tối đa 3 lần (cả âm và dương)');
     console.log('🎯 TP/SL CHIẾN LƯỢC:');
     console.log('   TP: ' + STRATEGY_CONFIG.takeProfitLevels.map(tp => `-${tp.priceChangePercent}% (${tp.closeRatio * 100}%)`).join(', '));
     console.log('   SL: Tùy theo Risk Level');
@@ -463,6 +501,36 @@ class FakePumpStrategyBot {
   private isOnBinance(symbol: string): boolean {
     const baseSymbol = symbol.replace('USDT', '').toUpperCase();
     return this.binanceSymbolsCache.has(baseSymbol);
+  }
+
+  private calculateSMA(prices: number[], period: number): number {
+    if (prices.length < period) return 0;
+    const slice = prices.slice(-period);
+    return slice.reduce((a, b) => a + b, 0) / slice.length;
+  }
+
+  private calculateRSI(prices: number[], period: number = 14): number {
+    if (prices.length < period + 1) return 50;
+
+    let gains = 0;
+    let losses = 0;
+
+    for (let i = 1; i <= period; i++) {
+      const difference = prices[prices.length - i] - prices[prices.length - i - 1];
+      if (difference >= 0) {
+        gains += difference;
+      } else {
+        losses -= difference;
+      }
+    }
+
+    const avgGain = gains / period;
+    const avgLoss = losses / period;
+
+    if (avgLoss === 0) return 100;
+
+    const rs = avgGain / avgLoss;
+    return 100 - (100 / (1 + rs));
   }
 
   private calculateMA(candles: SimpleCandle[], period: number): number {
@@ -697,6 +765,128 @@ class FakePumpStrategyBot {
     return pumpStartIndex - startIndex + 1;
   }
 
+  private detectDowntrendStrategySignal(
+    symbol: string,
+    candles: SimpleCandle[],
+    currentPrice: number,
+    volume24h: number
+  ): {
+    hasSignal: boolean;
+    signalType: string;
+    conditions: {
+      priceBelowSMA20: boolean;
+      rsiOverbought: boolean;
+      volumeSpike: boolean;
+      sma5BelowSMA20: boolean;
+      longTermDowntrend: boolean;
+      conditionsMet: number;
+    };
+    rsi: number;
+    sma5: number;
+    sma20: number;
+    sma50: number;
+    volumeAvg: number;
+  } {
+    if (candles.length < 50) {
+      return {
+        hasSignal: false,
+        signalType: '',
+        conditions: {
+          priceBelowSMA20: false,
+          rsiOverbought: false,
+          volumeSpike: false,
+          sma5BelowSMA20: false,
+          longTermDowntrend: false,
+          conditionsMet: 0
+        },
+        rsi: 50,
+        sma5: 0,
+        sma20: 0,
+        sma50: 0,
+        volumeAvg: 0
+      };
+    }
+
+    // STRICT VOLUME CHECK - REJECT IMMEDIATELY IF NOT IN RANGE
+    const volumeInRange = volume24h >= STRATEGY_CONFIG.downtrendStrategy.volumeRange.min && 
+                         volume24h <= STRATEGY_CONFIG.downtrendStrategy.volumeRange.max;
+
+    const priceInRange = currentPrice >= STRATEGY_CONFIG.downtrendStrategy.priceRange.min && 
+                        currentPrice <= STRATEGY_CONFIG.downtrendStrategy.priceRange.max;
+    
+    if (!priceInRange || !volumeInRange) {
+      if (!volumeInRange) {
+        console.log(`❌ Volume rejected: ${symbol} | Volume: ${(volume24h / 1000000).toFixed(2)}M not in range ${STRATEGY_CONFIG.downtrendStrategy.volumeRange.min}-${STRATEGY_CONFIG.downtrendStrategy.volumeRange.max}`);
+      }
+      return {
+        hasSignal: false,
+        signalType: '',
+        conditions: {
+          priceBelowSMA20: false,
+          rsiOverbought: false,
+          volumeSpike: false,
+          sma5BelowSMA20: false,
+          longTermDowntrend: false,
+          conditionsMet: 0
+        },
+        rsi: 50,
+        sma5: 0,
+        sma20: 0,
+        sma50: 0,
+        volumeAvg: 0
+      };
+    }
+
+    const prices = candles.map(c => c.close);
+    const volumes = candles.map(c => c.volume);
+    
+    const sma5 = this.calculateSMA(prices, 5);
+    const sma20 = this.calculateSMA(prices, 20);
+    const sma50 = this.calculateSMA(prices, 50);
+    const rsi = this.calculateRSI(prices, STRATEGY_CONFIG.downtrendStrategy.rsiPeriod);
+    
+    const recentVolumes = volumes.slice(-10);
+    const volumeAvg = recentVolumes.reduce((a, b) => a + b, 0) / recentVolumes.length;
+    const currentVolume = volumes[volumes.length - 1];
+    const volumeSpike = currentVolume / volumeAvg;
+
+    const priceBelowSMA20 = currentPrice < sma20;
+    const rsiOverbought = rsi > STRATEGY_CONFIG.downtrendStrategy.entryConditions.rsiOverbought;
+    const volumeSpikeCondition = volumeSpike > STRATEGY_CONFIG.downtrendStrategy.entryConditions.volumeSpike;
+    const sma5BelowSMA20 = sma5 < sma20;
+    const longTermDowntrend = currentPrice < sma50;
+
+    const conditions = {
+      priceBelowSMA20,
+      rsiOverbought,
+      volumeSpike: volumeSpikeCondition,
+      sma5BelowSMA20,
+      longTermDowntrend,
+      conditionsMet: 0
+    };
+
+    conditions.conditionsMet = [
+      priceBelowSMA20,
+      rsiOverbought,
+      volumeSpikeCondition,
+      sma5BelowSMA20
+    ].filter(Boolean).length;
+
+    const hasSignal = conditions.conditionsMet >= STRATEGY_CONFIG.downtrendStrategy.entryConditions.minConditions &&
+                     longTermDowntrend;
+
+    return {
+      hasSignal,
+      signalType: hasSignal ? 'DOWNTREND_STRATEGY' : '',
+      conditions,
+      rsi,
+      sma5,
+      sma20,
+      sma50,
+      volumeAvg
+    };
+  }
+
   private detectPumpAlertReversalSignal(
     symbol: string,
     candles: SimpleCandle[], 
@@ -902,36 +1092,33 @@ class FakePumpStrategyBot {
     initialQty: number
   ): StopLossLevel[] {
     if (riskLevel === 'MEDIUM') {
-      // MEDIUM: Stop Loss duy nhất ở 4%
       return [
         {
           priceChangePercent: 4.0,
-          closeRatio: 1.0, // Đóng toàn bộ
+          closeRatio: 1.0,
           executed: false,
           quantity: initialQty,
           absolutePrice: actualPrice * (1 + 4.0 / 100)
         }
       ];
     } else if (riskLevel === 'LOW') {
-      // LOW: 2 mức stop loss: 7% (50%) và 10% (50%)
       return [
         {
           priceChangePercent: 7.0,
-          closeRatio: 0.5, // 50% lệnh
+          closeRatio: 0.5,
           executed: false,
           quantity: initialQty * 0.5,
           absolutePrice: actualPrice * (1 + 7.0 / 100)
         },
         {
           priceChangePercent: 10.0,
-          closeRatio: 0.5, // 50% lệnh còn lại
+          closeRatio: 0.5,
           executed: false,
           quantity: initialQty * 0.5,
           absolutePrice: actualPrice * (1 + 10.0 / 100)
         }
       ];
     } else {
-      // HIGH hoặc mặc định: sử dụng stop loss từ config
       return STRATEGY_CONFIG.stopLossLevels.map(level => {
         const absolutePrice = actualPrice * (1 + level.priceChangePercent / 100);
         return { 
@@ -941,74 +1128,6 @@ class FakePumpStrategyBot {
           absolutePrice
         };
       });
-    }
-  }
-
-  private async sendTPSLUpdateAlert(position: PositionData): Promise<void> {
-    try {
-      if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
-
-      const message = 
-        `🔄 **CẬP NHẬT TP/SL**: ${position.symbol}\n` +
-        `💰 Giá trung bình: $${position.averagePrice.toFixed(6)}\n` +
-        `📊 Khối lượng: ${position.totalQty.toFixed(2)} contracts\n` +
-        `🔄 Số lần DCA: ${position.dcaCount}\n` +
-        `🎯 Risk Level: ${position.riskLevel}\n\n` +
-        `🎯 **TAKE PROFIT**:\n` +
-        position.takeProfitLevels.map((level, i) => 
-          `• TP${i+1}: ${level.priceChangePercent.toFixed(1)}% ($${level.absolutePrice?.toFixed(6)}) - ${(level.closeRatio * 100).toFixed(0)}%`
-        ).join('\n') + '\n\n' +
-        `🛡️ **STOP LOSS**:\n` +
-        position.stopLossLevels.map((level, i) => 
-          `• SL${i+1}: ${level.priceChangePercent.toFixed(1)}% ($${level.absolutePrice?.toFixed(6)}) - ${(level.closeRatio * 100).toFixed(0)}%`
-        ).join('\n');
-
-      await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-        chat_id: TELEGRAM_CHAT_ID,
-        text: message,
-        parse_mode: 'Markdown'
-      });
-      
-    } catch (error) {
-      console.error('Lỗi gửi thông báo TP/SL:', error);
-    }
-  }
-
-  private async sendEntryAlert(position: PositionData, currentPrice: number): Promise<void> {
-    try {
-      if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
-
-      const tp1Price = currentPrice * (1 - STRATEGY_CONFIG.takeProfitLevels[0].priceChangePercent / 100);
-      const tp2Price = currentPrice * (1 - STRATEGY_CONFIG.takeProfitLevels[1].priceChangePercent / 100);
-      const tp3Price = currentPrice * (1 - STRATEGY_CONFIG.takeProfitLevels[2].priceChangePercent / 100);
-      
-      const slText = position.riskLevel === 'MEDIUM' 
-        ? `• SL: +4.0% ($${(currentPrice * 1.04).toFixed(6)}) - 100%`
-        : position.riskLevel === 'LOW'
-        ? `• SL1: +7.0% ($${(currentPrice * 1.07).toFixed(6)}) - 50%\n• SL2: +10.0% ($${(currentPrice * 1.10).toFixed(6)}) - 50%`
-        : `• SL1: +${STRATEGY_CONFIG.stopLossLevels[0].priceChangePercent}% ($${(currentPrice * (1 + STRATEGY_CONFIG.stopLossLevels[0].priceChangePercent / 100)).toFixed(6)}) - ${(STRATEGY_CONFIG.stopLossLevels[0].closeRatio * 100).toFixed(0)}%\n• SL2: +${STRATEGY_CONFIG.stopLossLevels[1].priceChangePercent}% ($${(currentPrice * (1 + STRATEGY_CONFIG.stopLossLevels[1].priceChangePercent / 100)).toFixed(6)}) - ${(STRATEGY_CONFIG.stopLossLevels[1].closeRatio * 100).toFixed(0)}%`;
-
-      const message = 
-        `🎯 **VÀO LỆNH SHORT**: ${position.symbol}\n` +
-        `💰 Entry: $${currentPrice.toFixed(6)}\n` +
-        `📊 Khối lượng: ${position.totalQty.toFixed(2)} contracts\n` +
-        `🎯 Signal: ${position.signalType}\n` +
-        `📈 Confidence: ${position.confidence}%\n` +
-        `⚠️ Risk Level: ${position.riskLevel}\n\n` +
-        `🎯 **CHIẾN LƯỢC TP/SL**:\n` +
-        `• TP1: -${STRATEGY_CONFIG.takeProfitLevels[0].priceChangePercent}% ($${tp1Price.toFixed(6)}) - ${(STRATEGY_CONFIG.takeProfitLevels[0].closeRatio * 100).toFixed(0)}%\n` +
-        `• TP2: -${STRATEGY_CONFIG.takeProfitLevels[1].priceChangePercent}% ($${tp2Price.toFixed(6)}) - ${(STRATEGY_CONFIG.takeProfitLevels[1].closeRatio * 100).toFixed(0)}%\n` +
-        `• TP3: -${STRATEGY_CONFIG.takeProfitLevels[2].priceChangePercent}% ($${tp3Price.toFixed(6)}) - ${(STRATEGY_CONFIG.takeProfitLevels[2].closeRatio * 100).toFixed(0)}%\n` +
-        `${slText}`;
-
-      await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-        chat_id: TELEGRAM_CHAT_ID,
-        text: message,
-        parse_mode: 'Markdown'
-      });
-      
-    } catch (error) {
-      console.error('Lỗi gửi thông báo vào lệnh:', error);
     }
   }
 
@@ -1042,7 +1161,7 @@ class FakePumpStrategyBot {
       const binanceSymbol = symbol.replace('_USDT', 'USDT');
       const isMexcExclusive = !this.binanceSymbolsCache.has(binanceSymbol);
       
-      console.log(`🎯 Tracking: ${symbol} (Pump +${reversalSignal.initialPumpPct.toFixed(2)}%, Volume: ${(volume24h / 1000000).toFixed(2)}M)`);
+      console.log(`🎯 Tracking (Pump): ${symbol} (Pump +${reversalSignal.initialPumpPct.toFixed(2)}%, Volume: ${(volume24h / 1000000).toFixed(2)}M)`);
       return true;
     }
 
@@ -1079,7 +1198,7 @@ class FakePumpStrategyBot {
         trackData.notifiedReversal = true;
         trackData.riskLevel = reversalSignal.riskLevel;
         
-        console.log(`🔔 SHORT SIGNAL: ${symbol} (Giảm ${reversalSignal.dropFromPeak.toFixed(2)}%, Confidence: ${reversalSignal.confidence}%, Volume: ${(volume24h / 1000000).toFixed(2)}M)`);
+        console.log(`🔔 SHORT SIGNAL (Pump): ${symbol} (Giảm ${reversalSignal.dropFromPeak.toFixed(2)}%, Confidence: ${reversalSignal.confidence}%, Volume: ${(volume24h / 1000000).toFixed(2)}M)`);
         
         return true;
       }
@@ -1090,8 +1209,98 @@ class FakePumpStrategyBot {
       const trackingDuration = Date.now() - trackData.addedAt;
       if (trackingDuration > STRATEGY_CONFIG.trackingConfig.maxTrackingTime || reversalSignal.dropFromPeak > 30) {
         this.pumpTrackingCoins.delete(symbol);
-        console.log(`✅ Dừng tracking: ${symbol}`);
+        console.log(`✅ Dừng tracking (Pump): ${symbol}`);
       }
+    }
+
+    return false;
+  }
+
+  private async handleDowntrendStrategyTracking(symbol: string, candles: SimpleCandle[], currentPrice: number, volume24h: number): Promise<boolean> {
+    if (!STRATEGY_CONFIG.downtrendStrategy.enabled) {
+      return false;
+    }
+
+    // STRICT VOLUME CHECK AT THE BEGINNING
+    const volumeInRange = volume24h >= STRATEGY_CONFIG.downtrendStrategy.volumeRange.min && 
+                         volume24h <= STRATEGY_CONFIG.downtrendStrategy.volumeRange.max;
+
+    if (!volumeInRange) {
+      if (volume24h > STRATEGY_CONFIG.downtrendStrategy.volumeRange.max) {
+        console.log(`❌ Volume too high for downtrend: ${symbol} | ${(volume24h / 1000000).toFixed(2)}M > ${STRATEGY_CONFIG.downtrendStrategy.volumeRange.max / 1000000}M`);
+      }
+      return false;
+    }
+
+    const downtrendSignal = this.detectDowntrendStrategySignal(symbol, candles, currentPrice, volume24h);
+    
+    if (downtrendSignal.hasSignal && !this.downtrendTrackingCoins.has(symbol)) {
+      const listingAgeDays = await this.getListingAgeDays(symbol);
+      
+      if (listingAgeDays < 14) {
+        return false;
+      }
+
+      // FINAL VOLUME CHECK
+      if (volume24h > STRATEGY_CONFIG.downtrendStrategy.volumeRange.max) {
+        console.log(`❌ REJECTED (Volume too high): ${symbol} | Volume: ${(volume24h / 1000000).toFixed(2)}M > ${STRATEGY_CONFIG.downtrendStrategy.volumeRange.max / 1000000}M`);
+        return false;
+      }
+
+      const trackingData: CoinTrackingData = {
+        symbol,
+        currentPrice,
+        dailyVolatility: 0,
+        volume24h,
+        timestamp: Date.now(),
+        status: 'TRACKING',
+        volumeSpike: downtrendSignal.conditions.volumeSpike ? downtrendSignal.volumeAvg : 1,
+        strengthScore: 0,
+        resistanceLevel: 0,
+        supportLevel: 0,
+        marketMomentum: 0,
+        ema: 0,
+        atr: 0,
+        priceHistory: candles.slice(-10).map(c => c.close),
+        volumeHistory: candles.slice(-10).map(c => c.volume),
+        hasEntrySignal: true,
+        signalType: 'DOWNTREND_STRATEGY',
+        entrySide: 'SHORT',
+        fakePumpSignal: false,
+        pumpPercent: 0,
+        hasVolumeConfirmation: true,
+        reversalSignal: false,
+        reversalType: '',
+        reversalReasons: [],
+        pumpHigh: 0,
+        retraceFromHigh: 0,
+        listingAgeDays,
+        peakPrice: currentPrice,
+        dropFromPeak: 0,
+        volumeRatio: downtrendSignal.conditions.volumeSpike ? downtrendSignal.volumeAvg : 1,
+        hasBearishPattern: false,
+        bearishPatterns: [],
+        priceUnderMA: true,
+        consecutiveBearish: false,
+        confidence: downtrendSignal.conditions.conditionsMet * 20,
+        riskLevel: 'MEDIUM',
+        pumpDurationCandles: 0,
+        requiredRetracePercent: 0,
+        sma5: downtrendSignal.sma5,
+        sma20: downtrendSignal.sma20,
+        sma50: downtrendSignal.sma50,
+        rsi: downtrendSignal.rsi,
+        volumeAvg: downtrendSignal.volumeAvg,
+        downtrendSignal: true,
+        downtrendConditions: downtrendSignal.conditions
+      };
+
+      this.downtrendTrackingCoins.set(symbol, trackingData);
+      
+      console.log(`🎯 Tracking (Downtrend): ${symbol} | Price: $${currentPrice.toFixed(4)} | Volume: ${(volume24h / 1000000).toFixed(2)}M`);
+      console.log(`   Conditions: ${downtrendSignal.conditions.conditionsMet}/4 | RSI: ${downtrendSignal.rsi.toFixed(1)} | SMA5: ${downtrendSignal.sma5.toFixed(4)} | SMA20: ${downtrendSignal.sma20.toFixed(4)}`);
+      
+      return true;
     }
 
     return false;
@@ -1109,6 +1318,7 @@ class FakePumpStrategyBot {
   }
 
   private detectEntrySignal(
+    symbol: string,
     candles: SimpleCandle[], 
     currentPrice: number, 
     volume24h: number
@@ -1123,11 +1333,23 @@ class FakePumpStrategyBot {
       return { hasSignal: false, signalType: '', side: 'SHORT', confidence: 0, riskLevel: 'HIGH' };
     }
 
+    if (STRATEGY_CONFIG.downtrendStrategy.enabled) {
+      const downtrendSignal = this.detectDowntrendStrategySignal(symbol, candles, currentPrice, volume24h);
+      if (downtrendSignal.hasSignal) {
+        return { 
+          hasSignal: true, 
+          signalType: 'DOWNTREND_STRATEGY',
+          side: 'SHORT',
+          confidence: downtrendSignal.conditions.conditionsMet * 20,
+          riskLevel: 'MEDIUM'
+        };
+      }
+    }
+
     const fakePump = this.detectFakePump(candles);
     
     if (fakePump.isFakePump) {
-      const tempSymbol = 'TEMP_SYMBOL';
-      const reversalSignal = this.detectPumpAlertReversalSignal(tempSymbol, candles, currentPrice);
+      const reversalSignal = this.detectPumpAlertReversalSignal(symbol, candles, currentPrice);
       
       if (reversalSignal.hasReversal && reversalSignal.confidence >= 50 && reversalSignal.riskLevel !== 'HIGH') {
         return { 
@@ -1244,7 +1466,7 @@ class FakePumpStrategyBot {
     }
   }
 
-  async fetch1MinKlineData(symbol: string, limit = 20): Promise<SimpleCandle[]> {
+  async fetch1MinKlineData(symbol: string, limit = 50): Promise<SimpleCandle[]> {
     const formattedSymbol = symbol.replace('USDT', '_USDT');
     const url = `https://contract.mexc.com/api/v1/contract/kline/${formattedSymbol}`;
     
@@ -1313,14 +1535,81 @@ class FakePumpStrategyBot {
     riskLevel: string;
     pumpDurationCandles: number;
     requiredRetracePercent: number;
+    sma5?: number;
+    sma20?: number;
+    sma50?: number;
+    rsi?: number;
+    volumeAvg?: number;
+    downtrendSignal?: boolean;
+    downtrendConditions?: {
+      priceBelowSMA20: boolean;
+      rsiOverbought: boolean;
+      volumeSpike: boolean;
+      sma5BelowSMA20: boolean;
+      longTermDowntrend: boolean;
+      conditionsMet: number;
+    };
   }> {
     try {
-      const candles = await this.fetch1MinKlineData(symbol, 20);
+      const candles = await this.fetch1MinKlineData(symbol, 50);
       if (candles.length < 15) {
         return this.getDefaultEnhancedIndicatorResult();
       }
 
       const currentPrice = await this.getCurrentPrice(symbol);
+      const volume24h = this.calculateRealVolume24h(candles);
+
+      const downtrendSignal = this.detectDowntrendStrategySignal(symbol, candles, currentPrice, volume24h);
+      
+      if (downtrendSignal.hasSignal) {
+        const listingAgeDays = await this.getListingAgeDays(symbol);
+        
+        return {
+          dailyVolatility: 0,
+          volume24h,
+          currentPrice,
+          volumeSpike: downtrendSignal.conditions.volumeSpike ? downtrendSignal.volumeAvg : 1,
+          strengthScore: 0,
+          candles,
+          ema: 0,
+          marketMomentum: 0,
+          atr: 0,
+          resistanceLevel: 0,
+          supportLevel: 0,
+          hasEntrySignal: true,
+          signalType: 'DOWNTREND_STRATEGY',
+          entrySide: 'SHORT',
+          fakePumpSignal: false,
+          pumpPercent: 0,
+          hasVolumeConfirmation: true,
+          reversalSignal: false,
+          reversalType: '',
+          reversalReasons: [],
+          pumpHigh: 0,
+          retraceFromHigh: 0,
+          listingAgeDays,
+          peakPrice: currentPrice,
+          dropFromPeak: 0,
+          volumeRatio: downtrendSignal.conditions.volumeSpike ? downtrendSignal.volumeAvg : 1,
+          hasBearishPattern: false,
+          bearishPatterns: [],
+          ma5: downtrendSignal.sma5,
+          ma10: 0,
+          priceUnderMA: true,
+          consecutiveBearish: false,
+          confidence: downtrendSignal.conditions.conditionsMet * 20,
+          riskLevel: 'MEDIUM',
+          pumpDurationCandles: 0,
+          requiredRetracePercent: 0,
+          sma5: downtrendSignal.sma5,
+          sma20: downtrendSignal.sma20,
+          sma50: downtrendSignal.sma50,
+          rsi: downtrendSignal.rsi,
+          volumeAvg: downtrendSignal.volumeAvg,
+          downtrendSignal: true,
+          downtrendConditions: downtrendSignal.conditions
+        };
+      }
 
       const reversalSignal = this.detectPumpAlertReversalSignal(symbol, candles, currentPrice);
       
@@ -1331,7 +1620,6 @@ class FakePumpStrategyBot {
       const listingAgeDays = await this.getListingAgeDays(symbol);
 
       const dailyVolatility = this.calculateDailyVolatility(candles);
-      const volume24h = this.calculateRealVolume24h(candles);
       
       const hasVolumeConfirmation = volume24h >= STRATEGY_CONFIG.minVolume24h && volume24h <= STRATEGY_CONFIG.maxVolume24h;
       
@@ -1343,7 +1631,7 @@ class FakePumpStrategyBot {
       const resistanceLevel = this.findResistanceLevel(candles, STRATEGY_CONFIG.resistanceLookback);
       const supportLevel = this.findSupportLevel(candles, STRATEGY_CONFIG.resistanceLookback);
 
-      const entrySignal = this.detectEntrySignal(candles, currentPrice, volume24h);
+      const entrySignal = this.detectEntrySignal(symbol, candles, currentPrice, volume24h);
 
       const strengthScore = this.calculateStrengthScore(
         dailyVolatility,
@@ -1875,8 +2163,6 @@ class FakePumpStrategyBot {
                 
                 console.log(`🚀 POSITIVE DCA: ${symbol} | +${positiveDcaQty} contracts | Profit: ${Math.abs(profitData.priceChangePercent).toFixed(2)}%`);
 
-                await this.sendTPSLUpdateAlert(position);
-
                 this.pendingDcaOrders.delete(dcaOrderId);
                 break;
               } else {
@@ -1966,8 +2252,6 @@ class FakePumpStrategyBot {
                 }
                 
                 console.log(`💰 DCA: ${symbol} | +${dcaQty} contracts | DCA Count: ${position.dcaCount}`);
-
-                await this.sendTPSLUpdateAlert(position);
 
                 this.pendingDcaOrders.delete(dcaOrderId);
                 break;
@@ -2213,7 +2497,8 @@ class FakePumpStrategyBot {
     const symbolsToProcess = symbols.filter(symbol => 
       !this.positions.has(symbol) && 
       !this.pumpTrackingCoins.has(symbol) &&
-      !this.trackingCoins.has(symbol)
+      !this.trackingCoins.has(symbol) &&
+      !this.downtrendTrackingCoins.has(symbol)
     );
 
     if (symbolsToProcess.length === 0) {
@@ -2229,13 +2514,24 @@ class FakePumpStrategyBot {
             return;
           }
 
-          const candles = await this.fetch1MinKlineData(symbol, 20);
+          const candles = await this.fetch1MinKlineData(symbol, 50);
           if (candles.length < 10) return;
 
           const currentPrice = await this.getCurrentPrice(symbol);
           if (currentPrice <= 0) return;
 
+          const volume24h = this.calculateRealVolume24h(candles);
+
+          // STRICT VOLUME CHECK BEFORE PROCESSING
+          const volumeInRange = volume24h >= STRATEGY_CONFIG.downtrendStrategy.volumeRange.min && 
+                               volume24h <= STRATEGY_CONFIG.downtrendStrategy.volumeRange.max;
+
+          if (!volumeInRange && volume24h > STRATEGY_CONFIG.maxVolume24h) {
+            return; // Skip if volume doesn't meet requirements for either strategy
+          }
+
           await this.handlePumpTracking(symbol, candles, currentPrice);
+          await this.handleDowntrendStrategyTracking(symbol, candles, currentPrice, volume24h);
 
         } catch (error) {
           // Bỏ qua lỗi
@@ -2273,11 +2569,19 @@ class FakePumpStrategyBot {
 
           const indicators = await this.calculateEnhancedIndicators(symbol);
           
-          const meetsVolume = indicators.volume24h >= STRATEGY_CONFIG.minVolume24h && indicators.volume24h <= STRATEGY_CONFIG.maxVolume24h;
+          // STRICT VOLUME CHECKS FOR BOTH STRATEGIES
+          const meetsPumpVolume = indicators.volume24h >= STRATEGY_CONFIG.minVolume24h && indicators.volume24h <= STRATEGY_CONFIG.maxVolume24h;
+          const meetsDowntrendVolume = indicators.volume24h >= STRATEGY_CONFIG.downtrendStrategy.volumeRange.min && 
+                                      indicators.volume24h <= STRATEGY_CONFIG.downtrendStrategy.volumeRange.max;
+
           const hasReversal = indicators.reversalSignal && indicators.confidence >= 50;
           const isNotHighRisk = indicators.riskLevel !== 'HIGH';
+          const hasDowntrendSignal = indicators.downtrendSignal;
 
-          if (!meetsVolume || !hasReversal || !isNotHighRisk) {
+          const validForPump = meetsPumpVolume && hasReversal && isNotHighRisk;
+          const validForDowntrend = meetsDowntrendVolume && hasDowntrendSignal;
+
+          if (!validForPump && !validForDowntrend) {
             return null;
           }
 
@@ -2323,7 +2627,14 @@ class FakePumpStrategyBot {
             confidence: indicators.confidence,
             riskLevel: indicators.riskLevel,
             pumpDurationCandles: indicators.pumpDurationCandles,
-            requiredRetracePercent: indicators.requiredRetracePercent
+            requiredRetracePercent: indicators.requiredRetracePercent,
+            sma5: indicators.sma5,
+            sma20: indicators.sma20,
+            sma50: indicators.sma50,
+            rsi: indicators.rsi,
+            volumeAvg: indicators.volumeAvg,
+            downtrendSignal: indicators.downtrendSignal,
+            downtrendConditions: indicators.downtrendConditions
           };
 
           return { symbol, coinData };
@@ -2342,7 +2653,7 @@ class FakePumpStrategyBot {
     });
 
     if (candidateList.length > 0) {
-      console.log(`✅ Found ${candidateList.length} potential coins (Volume < 10M)`);
+      console.log(`✅ Found ${candidateList.length} potential coins (Volume checked)`);
     }
   }
 
@@ -2358,15 +2669,118 @@ class FakePumpStrategyBot {
     coinsToAdd.forEach(([symbol, coinData]) => {
       this.trackingCoins.set(symbol, coinData);
       this.candidateCoins.delete(symbol);
-      console.log(`📊 Tracking: ${symbol} | Pump: ${coinData.pumpPercent.toFixed(1)}% | Confidence: ${coinData.confidence}% | Volume: ${(coinData.volume24h / 1000000).toFixed(2)}M`);
+      console.log(`📊 Tracking: ${symbol} | ${coinData.signalType} | Confidence: ${coinData.confidence}% | Volume: ${(coinData.volume24h / 1000000).toFixed(2)}M`);
     });
   }
 
   async trackTopCoinsRealTime(): Promise<void> {
-    if (this.trackingCoins.size === 0) return;
+    if (this.trackingCoins.size === 0 && this.downtrendTrackingCoins.size === 0) return;
 
     let enteredCount = 0;
 
+    // Track downtrend strategy coins with STRICT VOLUME CHECKS
+    for (const [symbol, coinData] of this.downtrendTrackingCoins.entries()) {
+      try {
+        if (!this.hasMinimumBalance() || this.positions.size >= STRATEGY_CONFIG.maxActivePositions) {
+          continue;
+        }
+
+        const currentPrice = await this.getCurrentPrice(symbol);
+        if (currentPrice <= 0) continue;
+
+        coinData.currentPrice = currentPrice;
+
+        const indicators = await this.calculateEnhancedIndicators(symbol);
+        
+        // STRICT VOLUME VALIDATION
+        const volumeInRange = indicators.volume24h >= STRATEGY_CONFIG.downtrendStrategy.volumeRange.min && 
+                             indicators.volume24h <= STRATEGY_CONFIG.downtrendStrategy.volumeRange.max;
+
+        if (!indicators.downtrendSignal || !volumeInRange) {
+          console.log(`❌ Removing ${symbol} from downtrend tracking - Volume: ${(indicators.volume24h / 1000000).toFixed(2)}M`);
+          this.downtrendTrackingCoins.delete(symbol);
+          continue;
+        }
+
+        if (indicators.volume24h > STRATEGY_CONFIG.downtrendStrategy.volumeRange.max) {
+          console.log(`⚠️ Bỏ qua ${symbol} do volume 24h quá cao: ${(indicators.volume24h / 1000000).toFixed(2)}M > ${STRATEGY_CONFIG.downtrendStrategy.volumeRange.max / 1000000}M`);
+          this.downtrendTrackingCoins.delete(symbol);
+          continue;
+        }
+
+        const listingAgeDays = await this.getListingAgeDays(symbol);
+        if (listingAgeDays < 14) {
+          console.log(`⚠️ Bỏ qua ${symbol} do coin mới (${listingAgeDays.toFixed(1)} ngày)`);
+          this.downtrendTrackingCoins.delete(symbol);
+          continue;
+        }
+
+        coinData.dailyVolatility = indicators.dailyVolatility;
+        coinData.volume24h = indicators.volume24h;
+        coinData.volumeSpike = indicators.volumeSpike;
+        coinData.marketMomentum = indicators.marketMomentum;
+        coinData.ema = indicators.ema;
+        coinData.resistanceLevel = indicators.resistanceLevel;
+        coinData.supportLevel = indicators.supportLevel;
+        coinData.hasEntrySignal = indicators.hasEntrySignal;
+        coinData.signalType = indicators.signalType;
+        coinData.strengthScore = indicators.strengthScore;
+        coinData.fakePumpSignal = indicators.fakePumpSignal;
+        coinData.pumpPercent = indicators.pumpPercent;
+        coinData.hasVolumeConfirmation = indicators.hasVolumeConfirmation;
+        coinData.reversalSignal = indicators.reversalSignal;
+        coinData.reversalType = indicators.reversalType;
+        coinData.reversalReasons = indicators.reversalReasons;
+        coinData.pumpHigh = indicators.pumpHigh;
+        coinData.retraceFromHigh = indicators.retraceFromHigh;
+        coinData.listingAgeDays = indicators.listingAgeDays;
+        coinData.peakPrice = indicators.peakPrice;
+        coinData.dropFromPeak = indicators.dropFromPeak;
+        coinData.volumeRatio = indicators.volumeRatio;
+        coinData.hasBearishPattern = indicators.hasBearishPattern;
+        coinData.bearishPatterns = indicators.bearishPatterns;
+        coinData.ma5 = indicators.ma5;
+        coinData.ma10 = indicators.ma10;
+        coinData.priceUnderMA = indicators.priceUnderMA;
+        coinData.consecutiveBearish = indicators.consecutiveBearish;
+        coinData.confidence = indicators.confidence;
+        coinData.riskLevel = indicators.riskLevel;
+        coinData.pumpDurationCandles = indicators.pumpDurationCandles;
+        coinData.requiredRetracePercent = indicators.requiredRetracePercent;
+        coinData.sma5 = indicators.sma5;
+        coinData.sma20 = indicators.sma20;
+        coinData.sma50 = indicators.sma50;
+        coinData.rsi = indicators.rsi;
+        coinData.volumeAvg = indicators.volumeAvg;
+        coinData.downtrendSignal = indicators.downtrendSignal;
+        coinData.downtrendConditions = indicators.downtrendConditions;
+
+        if (coinData.hasEntrySignal && coinData.status === 'TRACKING') {
+          console.log(`🎯 SIGNAL (Downtrend): ${symbol} | Conditions: ${coinData.downtrendConditions?.conditionsMet}/4 | RSI: ${coinData.rsi?.toFixed(1)} | Price: $${currentPrice.toFixed(4)}`);
+          
+          coinData.status = 'READY_TO_ENTER';
+        }
+
+        if (coinData.status === 'READY_TO_ENTER') {
+          console.log(`🚀 ENTERING (Downtrend): ${symbol} | ${coinData.signalType}`);
+          
+          await this.enterPosition(symbol, coinData.signalType, coinData.confidence, coinData.riskLevel);
+          coinData.status = 'ENTERED';
+          enteredCount++;
+          this.downtrendTrackingCoins.delete(symbol);
+        }
+
+        const timeDiff = Date.now() - coinData.timestamp;
+        if (timeDiff > 30 * 60 * 1000 && coinData.status === 'TRACKING') {
+          this.downtrendTrackingCoins.delete(symbol);
+        }
+
+      } catch (error) {
+        // Bỏ qua lỗi
+      }
+    }
+
+    // Track existing fake pump strategy coins
     for (const [symbol, coinData] of this.trackingCoins.entries()) {
       try {
         if (!this.hasMinimumBalance() || this.positions.size >= STRATEGY_CONFIG.maxActivePositions) {
@@ -2432,13 +2846,13 @@ class FakePumpStrategyBot {
         coinData.requiredRetracePercent = indicators.requiredRetracePercent;
 
         if (coinData.hasEntrySignal && coinData.status === 'TRACKING') {
-          console.log(`🎯 SIGNAL: ${symbol} | ${coinData.signalType} | Confidence: ${coinData.confidence}% | Volume: ${(coinData.volume24h / 1000000).toFixed(2)}M`);
+          console.log(`🎯 SIGNAL (Pump): ${symbol} | ${coinData.signalType} | Confidence: ${coinData.confidence}% | Volume: ${(coinData.volume24h / 1000000).toFixed(2)}M`);
           
           coinData.status = 'READY_TO_ENTER';
         }
 
         if (coinData.status === 'READY_TO_ENTER') {
-          console.log(`🚀 ENTERING: ${symbol} | ${coinData.signalType}`);
+          console.log(`🚀 ENTERING (Pump): ${symbol} | ${coinData.signalType}`);
           
           await this.enterPosition(symbol, coinData.signalType, coinData.confidence, coinData.riskLevel);
           coinData.status = 'ENTERED';
@@ -2554,12 +2968,10 @@ class FakePumpStrategyBot {
         tpDoubled: false,
         currentTpLevels: takeProfitLevels.map(tp => tp.priceChangePercent),
         currentSlLevels: stopLossLevels.map(sl => sl.priceChangePercent),
-        riskLevel: riskLevel // Thêm riskLevel vào position
+        riskLevel: riskLevel
       };
 
       this.positions.set(symbol, position);
-
-      await this.sendEntryAlert(position, actualPrice);
 
     } catch (error) {
       console.error(`❌ ENTRY ERROR: ${symbol}`, error);
@@ -2691,7 +3103,8 @@ class FakePumpStrategyBot {
 
     this.lastStatusDisplay = now;
     
-    console.log(`\n📊 STATUS: Balance: $${this.accountBalance.toFixed(2)} | Positions: ${this.positions.size} | PnL: $${this.totalProfit.toFixed(2)} | Tracking: ${this.pumpTrackingCoins.size}`);
+    console.log(`\n📊 STATUS: Balance: $${this.accountBalance.toFixed(2)} | Positions: ${this.positions.size} | PnL: $${this.totalProfit.toFixed(2)}`);
+    console.log(`   Tracking: Pump: ${this.pumpTrackingCoins.size} | Downtrend: ${this.downtrendTrackingCoins.size} | General: ${this.trackingCoins.size}`);
     
     if (this.positions.size > 0) {
       for (const [symbol, position] of this.positions.entries()) {
@@ -2711,7 +3124,7 @@ class FakePumpStrategyBot {
           extraInfo += ` | 2xTP`;
         }
         
-        console.log(`   ${symbol}: ${status} $${profitData.profit.toFixed(2)} (${profitData.priceChangePercent.toFixed(1)}%) | Closed: ${closedPercent}% | Risk: ${position.riskLevel}${extraInfo}`);
+        console.log(`   ${symbol}: ${status} $${profitData.profit.toFixed(2)} (${profitData.priceChangePercent.toFixed(1)}%) | Closed: ${closedPercent}% | Risk: ${position.riskLevel} | ${position.signalType}${extraInfo}`);
         
         if (position.currentTpLevels && position.currentSlLevels) {
           console.log(`     TP: ${position.currentTpLevels.map(tp => tp.toFixed(1) + '%').join(', ')}`);
@@ -2728,15 +3141,24 @@ class FakePumpStrategyBot {
         console.log(`   ${symbol}: Pump +${trackData.initialPumpPct.toFixed(1)}% | Drop: ${dropFromPeak.toFixed(1)}% | Risk: ${trackData.riskLevel}`);
       }
     }
+
+    if (this.downtrendTrackingCoins.size > 0) {
+      console.log(`\n📉 DOWNTREND TRACKING (${this.downtrendTrackingCoins.size} coins):`);
+      for (const [symbol, trackData] of this.downtrendTrackingCoins.entries()) {
+        const currentPrice = await this.getCurrentPrice(symbol);
+        console.log(`   ${symbol}: $${currentPrice.toFixed(4)} | Conditions: ${trackData.downtrendConditions?.conditionsMet}/4 | RSI: ${trackData.rsi?.toFixed(1)}`);
+      }
+    }
     console.log('');
   }
 
   async run(): Promise<void> {
     console.log('🚀 FAKE PUMP STRATEGY BOT STARTED');
-    console.log('🎯 ENTRY: Pump 15% + Reversal');
+    console.log('🎯 STRATEGY 1: Pump 15% + Reversal');
+    console.log('🎯 STRATEGY 2: Downtrend Coin (Price $0.01-$0.2, Volume 10k-5M)');
     console.log('📊 VOLUME: < 10M USDT - BẮT BUỘC');
-    console.log('💰 POSITION: 10% of initial balance'); // Đã cập nhật từ 15% xuống 10%
-    console.log('🔄 DCA: Tối đa 3 lần (cả âm và dương)'); // Đã cập nhật
+    console.log('💰 POSITION: 10% of initial balance');
+    console.log('🔄 DCA: Tối đa 3 lần (cả âm và dương)');
     console.log('🎯 TP/SL CHIẾN LƯỢC:');
     console.log('   TP: ' + STRATEGY_CONFIG.takeProfitLevels.map(tp => `-${tp.priceChangePercent}% (${tp.closeRatio * 100}%)`).join(', '));
     console.log('   SL: Tùy theo Risk Level');
