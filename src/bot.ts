@@ -26,16 +26,16 @@ interface Order {
 }
 
 const STRATEGY_CONFIG = {
-  initialPositionPercent: 0.4, 
-  maxTotalPositionPercent: 0.3,
+  initialPositionPercent: 0.1, // Sửa từ 0.4 thành 0.1 (10%)
+  maxTotalPositionPercent: 0.4, // Tăng lên 40% để cho phép DCA
   takeProfitLevels: [
-    { priceChangePercent: 3.0, closeRatio: 0.4 },
-    { priceChangePercent: 6.0, closeRatio: 0.4 },
-    { priceChangePercent: 10.0, closeRatio: 0.2 }
+    { priceChangePercent: 2.0, closeRatio: 0.3 }, // Giảm TP để phù hợp với position size lớn hơn
+    { priceChangePercent: 4.0, closeRatio: 0.4 },
+    { priceChangePercent: 6.0, closeRatio: 0.3 }
   ],
   stopLossLevels: [
-    { priceChangePercent: 2.0, closeRatio: 0.5 },
-    { priceChangePercent: 4.0, closeRatio: 0.5 }
+    { priceChangePercent: 3.0, closeRatio: 0.5 }, // Tăng SL để tránh bị stop sớm
+    { priceChangePercent: 5.0, closeRatio: 0.5 }
   ],
   maxVolume24h: 10000000,
   minVolume24h: 100000,
@@ -91,33 +91,39 @@ const STRATEGY_CONFIG = {
   },
   lowCapStrategy: {
     enabled: true,
-    maxVolume24h: 15000000, // Tăng từ 8M lên 15M
+    maxVolume24h: 15000000,
     priceRange: {
-      min: 0.0001, // Giảm từ 0.005 xuống 0.0001
-      max: 5.0 // Tăng từ 1.0 lên 5.0
+      min: 0.0001,
+      max: 5.0
     },
-    maxDailyVolatility: 50, // Tăng từ 30 lên 50
-    rsiOverbought: 60, // Giảm từ 65 xuống 60
-    volumeSpikeThreshold: 1.5, // Giảm từ 1.8 xuống 1.5
-    minTrendStrength: -0.1, // Giảm từ -0.3 xuống -0.1
+    maxDailyVolatility: 50,
+    rsiOverbought: 60,
+    volumeSpikeThreshold: 1.5,
+    minTrendStrength: -0.1,
     pullbackConfirmation: {
-      minRetracement: 0.5, // Giảm từ 1.5 xuống 0.5
-      maxRetracement: 20.0, // Tăng từ 12.0 lên 20.0
-      volumeDropRatio: 0.6 // Giảm từ 0.8 xuống 0.6
+      minRetracement: 0.5,
+      maxRetracement: 20.0,
+      volumeDropRatio: 0.6
     },
     riskRewardRatio: {
-      min: 1.0, // Giảm từ 1.2 xuống 1.0
-      ideal: 1.5 // Giảm từ 1.8 xuống 1.5
+      min: 1.0,
+      ideal: 1.5
     },
-    maxTrackingCoins: 20, // Tăng từ 12 lên 20
-    positionSizePercent: 0.15, // Tăng từ 0.1 lên 0.15
-    minListingDays: 5 // Giảm từ 10 xuống 5
+    maxTrackingCoins: 20,
+    positionSizePercent: 0.1, // Sửa từ 0.15 thành 0.1 (10%)
+    minListingDays: 5
   },
   dcaConfig: {
-    negativeDcaPercent: 0.5,
-    positiveDcaPercent: 0.2,
-    maxTotalDcaPercent: 5.0,
-    trendWeakThreshold: -0.1
+    negativeDcaPercent: 0.1, // Sửa từ 0.5 thành 0.1 (10%)
+    positiveDcaPercent: 0.1, // Sửa từ 0.2 thành 0.1 (10%)
+    maxTotalDcaPercent: 60.0, // Tăng lên 40% để cho phép nhiều lần DCA
+    trendWeakThreshold: -0.1,
+    negativeDcaMinPercent: 1.0,    // Tăng lên 1% để tránh DCA quá sớm
+    positiveDcaMinPercent: 0.5,    // Tăng lên 0.5% 
+    minDcaInterval: 180000,        // Tăng lên 3 phút giữa các lần DCA
+    minPriceMovement: 0.5,         // Tăng lên 0.5%
+    maxConsecutiveDca: 6,          // Tăng lên 4 lần
+    dcaCooldown: 300000
   }
 };
 
@@ -251,6 +257,13 @@ interface PositionData {
   totalDcaPercent: number;
   trendStrength: number;
   candles?: SimpleCandle[];
+  // CÁC TRƯỜNG MỚI ĐƯỢC THÊM ĐỂ FIX LỖI DCA LIÊN TỤC
+  lastDcaPrice?: number;
+  lastNegativeDcaPrice?: number;
+  lastPositiveDcaPrice?: number;
+  lastNegativeDcaTime?: number;
+  consecutiveNegativeDcaCount: number;
+  consecutivePositiveDcaCount: number;
 }
 
 interface TrackingData {
@@ -391,22 +404,23 @@ class FakePumpStrategyBot {
     console.log('🤖 FAKE PUMP STRATEGY BOT - ENHANCED REVERSAL MODE');
     console.log('🎯 STRATEGY: Pump 10% + Reversal từ đỉnh');
     console.log('📊 VOLUME: < 10M USDT - BẮT BUỘC');
-    console.log('💰 VÀO LỆNH: 10% so với tổng tài sản ban đầu');
-    console.log('🔄 DCA: KHÔNG GIỚI HẠN (0.5% âm, 0.2% dương)');
+    console.log('💰 VÀO LỆNH: 10% so với tổng tài sản');
+    console.log('🔄 DCA: 10% mỗi lần (cả âm và dương)');
     console.log('🎯 TP/SL CHIẾN LƯỢC:');
     console.log('   TP: ' + STRATEGY_CONFIG.takeProfitLevels.map(tp => `-${tp.priceChangePercent}% (${tp.closeRatio * 100}%)`).join(', '));
-    console.log('   SL: Tùy theo Risk Level');
+    console.log('   SL: ' + STRATEGY_CONFIG.stopLossLevels.map(sl => `+${sl.priceChangePercent}% (${sl.closeRatio * 100}%)`).join(', '));
     console.log('⚠️  RISK: Cho phép vào lệnh cả RISK HIGH');
     console.log('⏰ ĐIỀU KIỆN: Coin trên 14 ngày');
     
     console.log('\n🎯 LOW-CAP STRATEGY ACTIVATED - ĐIỀU KIỆN NỚI LỎNG');
-    console.log('📊 VOLUME: < 15M USDT (tăng từ 8M)');
-    console.log('💰 PRICE RANGE: $0.0001 - $5.0 (mở rộng)');
+    console.log('📊 VOLUME: < 15M USDT');
+    console.log('💰 POSITION: 10% tài khoản');
+    console.log('💰 PRICE RANGE: $0.0001 - $5.0');
     console.log('📉 CONDITIONS: RSI > 60 + Downtrend + Volume Spike 1.5x');
     console.log('⏰ TIMEFRAME: 5 Minute Candles for Analysis');
     console.log('⚡ ENTRY: After pullback confirmation (0.5% - 20.0%)');
-    console.log('🎯 RISK/REWARD: Min 1.0:1 (giảm từ 1.2)');
-    console.log('⏰ COIN AGE: > 5 days required (giảm từ 10)');
+    console.log('🎯 RISK/REWARD: Min 1.0:1');
+    console.log('⏰ COIN AGE: > 5 days required');
   }
 
   private async rateLimit(): Promise<void> {
@@ -1587,21 +1601,35 @@ class FakePumpStrategyBot {
 
       const contractInfo = await this.getContractInfo(symbol);
       
-      let adjustedPercent = percent;
-      if (confidence >= 80) {
-        adjustedPercent = percent * 1.2;
-      } else if (confidence <= 50) {
-        adjustedPercent = percent * 0.7;
+      // Tính toán dựa trên số dư hiện tại
+      let capital = this.accountBalance * percent;
+      
+      // Kiểm tra đảm bảo không vượt quá leverage cho phép
+      const maxPositionValue = this.accountBalance * LEVERAGE;
+      const requestedPositionValue = capital * LEVERAGE;
+      
+      if (requestedPositionValue > maxPositionValue) {
+        console.log(`⚠️ [POSITION_SIZE] Giảm kích thước lệnh do vượt quá đòn bẩy cho phép`);
+        capital = this.accountBalance * 0.05; // Giảm xuống 5% nếu vượt quá
       }
       
-      const capital = this.initialBalance * adjustedPercent;
       let vol = (capital * LEVERAGE) / (currentPrice * contractInfo.contractSize);
+      
+      // Kiểm tra volume tối thiểu
+      const minVol = Math.pow(10, -contractInfo.volumePrecision);
+      if (vol < minVol) {
+        console.log(`⚠️ [POSITION_SIZE] Volume quá nhỏ, sử dụng volume tối thiểu`);
+        vol = minVol;
+      }
       
       const stepSize = Math.pow(10, -contractInfo.volumePrecision);
       vol = Math.floor(vol / stepSize) * stepSize;
       
+      console.log(`📊 [POSITION_CALC] ${symbol} | Percent: ${(percent*100).toFixed(1)}% | Capital: $${capital.toFixed(2)} | Volume: ${vol}`);
+      
       return vol;
     } catch (error) {
+      console.error(`❌ [POSITION_SIZE_ERROR] ${symbol}:`, error);
       return 0;
     }
   }
@@ -1963,6 +1991,35 @@ class FakePumpStrategyBot {
       
       if (profitData.priceChangePercent >= 0) return;
 
+      // ĐIỀU KIỆN MỚI: Chỉ DCA dương khi lời từ 0.5% trở lên
+      if (Math.abs(profitData.priceChangePercent) < STRATEGY_CONFIG.dcaConfig.positiveDcaMinPercent) {
+        return;
+      }
+
+      // ĐIỀU KIỆN MỚI: Kiểm tra thời gian tối thiểu giữa các lần DCA dương (ít nhất 3 phút)
+      const now = Date.now();
+      const minPositiveDcaInterval = 180000; // 3 phút
+      if (position.lastPositiveDcaTime && (now - position.lastPositiveDcaTime) < minPositiveDcaInterval) {
+        return;
+      }
+
+      // ĐIỀU KIỆN MỚI: Kiểm tra khoảng cách giá tối thiểu (ít nhất 0.5%)
+      if (position.lastPositiveDcaPrice) {
+        const priceMovement = Math.abs((currentPrice - position.lastPositiveDcaPrice) / position.lastPositiveDcaPrice * 100);
+        if (priceMovement < 0.5) {
+          return; // Giá chưa di chuyển đủ xa
+        }
+      }
+
+      // ĐIỀU KIỆN MỚI: Giới hạn số lần DCA dương liên tiếp
+      if (position.consecutivePositiveDcaCount >= 2) {
+        const cooldownTime = 300000; // 5 phút
+        if (position.lastPositiveDcaTime && (now - position.lastPositiveDcaTime) < cooldownTime) {
+          return;
+        }
+        position.consecutivePositiveDcaCount = 0; // Reset sau cool down
+      }
+
       if (position.totalDcaPercent >= STRATEGY_CONFIG.dcaConfig.maxTotalDcaPercent) {
         position.dcaDisabled = true;
         return;
@@ -1986,7 +2043,7 @@ class FakePumpStrategyBot {
           symbol,
           level: position.positiveDcaCount,
           quantity: positiveDcaQty,
-          timestamp: Date.now()
+          timestamp: now
         });
         
         const success = await this.addToPosition(symbol, positiveDcaQty, 'SHORT', `POSITIVE_DCA_${position.positiveDcaCount + 1}`);
@@ -1998,7 +2055,9 @@ class FakePumpStrategyBot {
           position.positionSize = newTotalQty;
           
           position.positiveDcaCount++;
-          position.lastPositiveDcaTime = Date.now();
+          position.lastPositiveDcaTime = now;
+          position.lastPositiveDcaPrice = currentPrice;
+          position.consecutivePositiveDcaCount++;
           position.totalDcaVolume += positiveDcaQty;
           position.totalDcaPercent += STRATEGY_CONFIG.dcaConfig.positiveDcaPercent;
 
@@ -2014,12 +2073,13 @@ class FakePumpStrategyBot {
 
           this.pendingDcaOrders.delete(dcaOrderId);
           
-          console.log(`✅ [POSITIVE_DCA] ${symbol} | Lần ${position.positiveDcaCount} | Tổng DCA: ${position.totalDcaPercent.toFixed(2)}%`);
+          console.log(`✅ [POSITIVE_DCA] ${symbol} | Lần ${position.positiveDcaCount} | Lời: ${Math.abs(profitData.priceChangePercent).toFixed(2)}% | Tổng DCA: ${position.totalDcaPercent.toFixed(2)}% | Giá: $${currentPrice.toFixed(6)}`);
         } else {
           this.pendingDcaOrders.delete(dcaOrderId);
         }
       }
     } catch (error) {
+      console.error(`❌ [POSITIVE_DCA_ERROR] ${symbol}:`, error);
     }
   }
 
@@ -2049,8 +2109,38 @@ class FakePumpStrategyBot {
     try {
       const priceChange = this.calculatePriceChangePercent(position.averagePrice, currentPrice);
 
+      // ĐIỀU KIỆN MỚI: Chỉ DCA khi lỗ từ 1% trở lên
+      if (priceChange > -STRATEGY_CONFIG.dcaConfig.negativeDcaMinPercent) {
+        return;
+      }
+
+      // ĐIỀU KIỆN MỚI: Kiểm tra thời gian tối thiểu giữa các lần DCA (ít nhất 3 phút)
+      const now = Date.now();
+      const minDcaInterval = STRATEGY_CONFIG.dcaConfig.minDcaInterval; // 3 phút
+      if (position.lastNegativeDcaTime && (now - position.lastNegativeDcaTime) < minDcaInterval) {
+        return;
+      }
+
+      // ĐIỀU KIỆN MỚI: Kiểm tra khoảng cách giá tối thiểu (ít nhất 0.5%)
+      if (position.lastNegativeDcaPrice) {
+        const priceMovement = Math.abs((currentPrice - position.lastNegativeDcaPrice) / position.lastNegativeDcaPrice * 100);
+        if (priceMovement < STRATEGY_CONFIG.dcaConfig.minPriceMovement) {
+          return; // Giá chưa di chuyển đủ xa
+        }
+      }
+
+      // ĐIỀU KIỆN MỚI: Giới hạn số lần DCA liên tiếp
+      if (position.consecutiveNegativeDcaCount >= STRATEGY_CONFIG.dcaConfig.maxConsecutiveDca) {
+        const cooldownTime = STRATEGY_CONFIG.dcaConfig.dcaCooldown; // 5 phút
+        if (position.lastNegativeDcaTime && (now - position.lastNegativeDcaTime) < cooldownTime) {
+          return;
+        }
+        position.consecutiveNegativeDcaCount = 0; // Reset sau cool down
+      }
+
       if (position.totalDcaPercent >= STRATEGY_CONFIG.dcaConfig.maxTotalDcaPercent) {
         position.dcaDisabled = true;
+        console.log(`⏹️ [DCA_LIMIT] ${symbol} | Đã đạt giới hạn DCA tối đa: ${position.totalDcaPercent.toFixed(2)}%`);
         return;
       }
 
@@ -2072,7 +2162,7 @@ class FakePumpStrategyBot {
           symbol,
           level: position.dcaCount,
           quantity: dcaQty,
-          timestamp: Date.now()
+          timestamp: now
         });
         
         const success = await this.addToPosition(symbol, dcaQty, 'SHORT', `DCA_${position.dcaCount + 1}`);
@@ -2084,7 +2174,9 @@ class FakePumpStrategyBot {
           position.positionSize = newTotalQty;
           
           position.dcaCount++;
-          position.lastDcaTime = Date.now();
+          position.lastNegativeDcaTime = now;
+          position.lastNegativeDcaPrice = currentPrice;
+          position.consecutiveNegativeDcaCount++;
           position.totalDcaVolume += dcaQty;
           position.totalDcaPercent += STRATEGY_CONFIG.dcaConfig.negativeDcaPercent;
 
@@ -2100,12 +2192,13 @@ class FakePumpStrategyBot {
 
           this.pendingDcaOrders.delete(dcaOrderId);
           
-          console.log(`✅ [NEGATIVE_DCA] ${symbol} | Lần ${position.dcaCount} | Tổng DCA: ${position.totalDcaPercent.toFixed(2)}%`);
+          console.log(`✅ [NEGATIVE_DCA] ${symbol} | Lần ${position.dcaCount} | Lỗ: ${priceChange.toFixed(2)}% | Tổng DCA: ${position.totalDcaPercent.toFixed(2)}% | Giá: $${currentPrice.toFixed(6)}`);
         } else {
           this.pendingDcaOrders.delete(dcaOrderId);
         }
       }
     } catch (error) {
+      console.error(`❌ [DCA_ERROR] ${symbol}:`, error);
     }
   }
 
@@ -2874,7 +2967,7 @@ class FakePumpStrategyBot {
           consecutiveDcaCount: 0,
           aggressiveDcaMode: false,
           totalDcaVolume: 0,
-          maxDcaVolume: positionSize * 2,
+          maxDcaVolume: positionSize * 4, // Tăng lên 4 lần để cho phép DCA
           confidence: trackingData.confidence,
           positiveDcaCount: 0,
           extendedTpLevels: [],
@@ -2883,7 +2976,15 @@ class FakePumpStrategyBot {
           riskLevel: riskReward.ratio >= 2 ? 'LOW' : 'MEDIUM',
           dcaDisabled: false,
           totalDcaPercent: 0,
-          trendStrength: trackingData.trendStrength
+          trendStrength: trackingData.trendStrength,
+          // CÁC TRƯỜNG MỚI ĐƯỢC THÊM
+          lastDcaPrice: currentPrice,
+          lastNegativeDcaPrice: currentPrice,
+          lastPositiveDcaPrice: currentPrice,
+          lastNegativeDcaTime: Date.now(),
+          lastPositiveDcaTime: Date.now(),
+          consecutiveNegativeDcaCount: 0,
+          consecutivePositiveDcaCount: 0
         };
 
         this.positions.set(symbol, position);
@@ -3194,7 +3295,7 @@ class FakePumpStrategyBot {
         executed: false
       }));
 
-      const maxDcaVolume = await this.calculatePositionSize(symbol, 0.3, confidence);
+      const maxDcaVolume = await this.calculatePositionSize(symbol, 0.4, confidence); // 40% cho DCA
 
       const position: PositionData = {
         symbol,
@@ -3244,12 +3345,23 @@ class FakePumpStrategyBot {
         riskLevel: riskLevel,
         dcaDisabled: false,
         totalDcaPercent: 0,
-        trendStrength: 0
+        trendStrength: 0,
+        // CÁC TRƯỜNG MỚI ĐƯỢC THÊM
+        lastDcaPrice: actualPrice,
+        lastNegativeDcaPrice: actualPrice,
+        lastPositiveDcaPrice: actualPrice,
+        lastNegativeDcaTime: Date.now(),
+        lastPositiveDcaTime: Date.now(),
+        consecutiveNegativeDcaCount: 0,
+        consecutivePositiveDcaCount: 0
       };
 
       this.positions.set(symbol, position);
 
+      console.log(`✅ [POSITION_OPENED] ${symbol} | Size: ${initialQty} | Entry: $${actualPrice.toFixed(6)} | Risk: ${riskLevel}`);
+
     } catch (error) {
+      console.error(`❌ [ENTRY_ERROR] Lỗi khi vào lệnh ${symbol}:`, error);
     }
   }
 
@@ -3424,22 +3536,26 @@ class FakePumpStrategyBot {
     console.log('🚀 FAKE PUMP STRATEGY BOT STARTED');
     console.log('🎯 STRATEGY: Pump 10% + Reversal');
     console.log('📊 VOLUME: < 10M USDT - BẮT BUỘC');
-    console.log('💰 POSITION: 10% of initial balance');
-    console.log('🔄 DCA: KHÔNG GIỚI HẠN (0.5% âm, 0.2% dương)');
+    console.log('💰 POSITION: 10% of account balance');
+    console.log('🔄 DCA: 10% each time (both negative and positive)');
+    console.log('   📍 Negative DCA: Loss ≥ 1%, 3 min interval, price movement ≥ 0.5%');
+    console.log('   📍 Positive DCA: Profit ≥ 0.5%, 3 min interval, price movement ≥ 0.5%');
+    console.log('   📍 Max 4 consecutive DCAs, 5 min cooldown');
     console.log('🎯 TP/SL CHIẾN LƯỢC:');
     console.log('   TP: ' + STRATEGY_CONFIG.takeProfitLevels.map(tp => `-${tp.priceChangePercent}% (${tp.closeRatio * 100}%)`).join(', '));
-    console.log('   SL: Tùy theo Risk Level');
+    console.log('   SL: ' + STRATEGY_CONFIG.stopLossLevels.map(sl => `+${sl.priceChangePercent}% (${sl.closeRatio * 100}%)`).join(', '));
     console.log('⚠️  RISK: Cho phép vào lệnh cả RISK HIGH');
     console.log('⏰ CONDITIONS: Coin age > 14 days');
     
     console.log('\n🎯 LOW-CAP STRATEGY ACTIVATED - ĐIỀU KIỆN NỚI LỎNG');
-    console.log('📊 VOLUME: < 15M USDT (tăng từ 8M)');
-    console.log('💰 PRICE RANGE: $0.0001 - $5.0 (mở rộng)');
+    console.log('📊 VOLUME: < 15M USDT');
+    console.log('💰 POSITION: 10% tài khoản');
+    console.log('💰 PRICE RANGE: $0.0001 - $5.0');
     console.log('📉 CONDITIONS: RSI > 60 + Downtrend + Volume Spike 1.5x');
     console.log('⏰ TIMEFRAME: 5 Minute Candles for Analysis');
     console.log('⚡ ENTRY: After pullback confirmation (0.5% - 20.0%)');
-    console.log('🎯 RISK/REWARD: Min 1.0:1 (giảm từ 1.2)');
-    console.log('⏰ COIN AGE: > 5 days required (giảm từ 10)');
+    console.log('🎯 RISK/REWARD: Min 1.0:1');
+    console.log('⏰ COIN AGE: > 5 days required');
 
     console.log('\n🔍 [LOWCAP_DEBUG] Sẽ hiển thị phân tích chi tiết 1 coin ngẫu nhiên cho Low-Cap mỗi 30 giây\n');
     
