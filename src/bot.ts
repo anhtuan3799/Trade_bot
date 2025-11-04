@@ -26,15 +26,15 @@ interface Order {
 }
 
 const STRATEGY_CONFIG = {
-  initialPositionPercent: 0.1, // Sửa từ 0.4 thành 0.1 (10%)
-  maxTotalPositionPercent: 0.4, // Tăng lên 40% để cho phép DCA
+  initialPositionPercent: 0.1,
+  maxTotalPositionPercent: 0.4,
   takeProfitLevels: [
-    { priceChangePercent: 2.0, closeRatio: 0.3 }, // Giảm TP để phù hợp với position size lớn hơn
+    { priceChangePercent: 2.0, closeRatio: 0.3 },
     { priceChangePercent: 4.0, closeRatio: 0.4 },
     { priceChangePercent: 6.0, closeRatio: 0.3 }
   ],
   stopLossLevels: [
-    { priceChangePercent: 3.0, closeRatio: 0.5 }, // Tăng SL để tránh bị stop sớm
+    { priceChangePercent: 3.0, closeRatio: 0.5 },
     { priceChangePercent: 5.0, closeRatio: 0.5 }
   ],
   maxVolume24h: 10000000,
@@ -97,32 +97,50 @@ const STRATEGY_CONFIG = {
       max: 5.0
     },
     maxDailyVolatility: 50,
-    rsiOverbought: 60,
+    rsiOverbought: 65,
     volumeSpikeThreshold: 1.5,
     minTrendStrength: -0.1,
-    pullbackConfirmation: {
-      minRetracement: 0.5,
-      maxRetracement: 20.0,
-      volumeDropRatio: 0.6
+    
+    // THÊM CÁC THÔNG SỐ MỚI ĐỂ TRÁNH VÀO LỆNH Ở ĐÁY
+    resistanceBounce: {
+      minDistanceFromResistance: 1.0,
+      maxDistanceFromResistance: 10.0,
+      minBouncePercent: 0.3,
     },
+    
+    // SỬA ĐỔI ĐIỀU KIỆN PULLBACK - TRÁNH ĐÁY
+    pullbackConfirmation: {
+      minRetracement: 2.0,
+      maxRetracement: 15.0,
+      volumeDropRatio: 0.7,
+      requireResistanceTest: true,
+    },
+    
     riskRewardRatio: {
-      min: 1.0,
-      ideal: 1.5
+      min: 1.2,
+      ideal: 1.8
     },
     maxTrackingCoins: 20,
-    positionSizePercent: 0.1, // Sửa từ 0.15 thành 0.1 (10%)
-    minListingDays: 5
+    positionSizePercent: 0.1,
+    minListingDays: 5,
+    
+    // THÊM ĐIỀU KIỆN XU HƯỚNG
+    trendRequirements: {
+      requireDowntrend: true,
+      minDowntrendCandles: 3,
+      priceBelowMA: true,
+    }
   },
   dcaConfig: {
-    negativeDcaPercent: 0.1, // Sửa từ 0.5 thành 0.1 (10%)
-    positiveDcaPercent: 0.1, // Sửa từ 0.2 thành 0.1 (10%)
-    maxTotalDcaPercent: 60.0, // Tăng lên 40% để cho phép nhiều lần DCA
+    negativeDcaPercent: 0.1,
+    positiveDcaPercent: 0.1,
+    maxTotalDcaPercent: 60.0,
     trendWeakThreshold: -0.1,
-    negativeDcaMinPercent: 1.0,    // Tăng lên 1% để tránh DCA quá sớm
-    positiveDcaMinPercent: 0.5,    // Tăng lên 0.5% 
-    minDcaInterval: 180000,        // Tăng lên 3 phút giữa các lần DCA
-    minPriceMovement: 0.5,         // Tăng lên 0.5%
-    maxConsecutiveDca: 6,          // Tăng lên 4 lần
+    negativeDcaMinPercent: 1.0,
+    positiveDcaMinPercent: 0.5,
+    minDcaInterval: 180000,
+    minPriceMovement: 0.5,
+    maxConsecutiveDca: 6,
     dcaCooldown: 300000
   }
 };
@@ -257,7 +275,6 @@ interface PositionData {
   totalDcaPercent: number;
   trendStrength: number;
   candles?: SimpleCandle[];
-  // CÁC TRƯỜNG MỚI ĐƯỢC THÊM ĐỂ FIX LỖI DCA LIÊN TỤC
   lastDcaPrice?: number;
   lastNegativeDcaPrice?: number;
   lastPositiveDcaPrice?: number;
@@ -340,6 +357,7 @@ interface LowCapTrackingData {
   takeProfit?: number;
   confidence: number;
   listingAgeDays?: number;
+  resistanceInfo?: any;
 }
 
 class OrderManager {
@@ -412,15 +430,16 @@ class FakePumpStrategyBot {
     console.log('⚠️  RISK: Cho phép vào lệnh cả RISK HIGH');
     console.log('⏰ ĐIỀU KIỆN: Coin trên 14 ngày');
     
-    console.log('\n🎯 LOW-CAP STRATEGY ACTIVATED - ĐIỀU KIỆN NỚI LỎNG');
+    console.log('\n🎯 LOW-CAP STRATEGY ACTIVATED - VÀO LỆNH Ở KHÁNG CỤ');
     console.log('📊 VOLUME: < 15M USDT');
     console.log('💰 POSITION: 10% tài khoản');
     console.log('💰 PRICE RANGE: $0.0001 - $5.0');
-    console.log('📉 CONDITIONS: RSI > 60 + Downtrend + Volume Spike 1.5x');
+    console.log('📉 CONDITIONS: RSI > 65 + Downtrend + Volume Spike 1.5x');
     console.log('⏰ TIMEFRAME: 5 Minute Candles for Analysis');
-    console.log('⚡ ENTRY: After pullback confirmation (0.5% - 20.0%)');
-    console.log('🎯 RISK/REWARD: Min 1.0:1');
+    console.log('⚡ ENTRY: After resistance bounce (1-10% từ kháng cự)');
+    console.log('🎯 RISK/REWARD: Min 1.2:1');
     console.log('⏰ COIN AGE: > 5 days required');
+    console.log('🛡️  CHIẾN LƯỢC MỚI: TRÁNH VÀO LỆNH Ở ĐÁY');
   }
 
   private async rateLimit(): Promise<void> {
@@ -2513,18 +2532,159 @@ class FakePumpStrategyBot {
     };
   }
 
+  // THÊM HÀM PHÂN TÍCH KHÁNG CỤ MỚI
+  private analyzeResistanceLevel(
+    symbol: string, 
+    candles: SimpleCandle[], 
+    currentPrice: number
+  ): {
+    hasResistance: boolean;
+    resistancePrice: number;
+    distanceFromResistance: number;
+    resistanceStrength: number;
+    recentTests: number;
+  } {
+    if (candles.length < 20) {
+      return { hasResistance: false, resistancePrice: 0, distanceFromResistance: 0, resistanceStrength: 0, recentTests: 0 };
+    }
+
+    const recentCandles = candles.slice(-30);
+    const highs = recentCandles.map(c => c.high);
+    
+    // Tìm các đỉnh quan trọng
+    const significantHighs: number[] = [];
+    for (let i = 2; i < highs.length - 2; i++) {
+      if (highs[i] > highs[i-1] && highs[i] > highs[i-2] && 
+          highs[i] > highs[i+1] && highs[i] > highs[i+2]) {
+        significantHighs.push(highs[i]);
+      }
+    }
+
+    if (significantHighs.length === 0) {
+      return { hasResistance: false, resistancePrice: 0, distanceFromResistance: 0, resistanceStrength: 0, recentTests: 0 };
+    }
+
+    // Nhóm các đỉnh gần nhau
+    const tolerance = 0.02; // 2%
+    const resistanceLevels: {price: number, count: number, totalVolume: number}[] = [];
+    
+    significantHighs.forEach(high => {
+      const existingLevel = resistanceLevels.find(level => 
+        Math.abs(level.price - high) / level.price < tolerance
+      );
+      
+      if (existingLevel) {
+        existingLevel.count++;
+      } else {
+        resistanceLevels.push({ price: high, count: 1, totalVolume: 0 });
+      }
+    });
+
+    // Sắp xếp theo strength (số lần test)
+    resistanceLevels.sort((a, b) => b.count - a.count);
+    
+    if (resistanceLevels.length === 0) {
+      return { hasResistance: false, resistancePrice: 0, distanceFromResistance: 0, resistanceStrength: 0, recentTests: 0 };
+    }
+
+    const strongestResistance = resistanceLevels[0];
+    const distance = ((strongestResistance.price - currentPrice) / strongestResistance.price) * 100;
+
+    return {
+      hasResistance: strongestResistance.count >= 2, // Ít nhất 2 lần test
+      resistancePrice: strongestResistance.price,
+      distanceFromResistance: distance,
+      resistanceStrength: strongestResistance.count,
+      recentTests: strongestResistance.count
+    };
+  }
+
+  // SỬA ĐỔI HÀM detectPullbackSignal - TRÁNH ĐÁY
   private detectPullbackSignal(
     symbol: string,
     candles: SimpleCandle[],
     currentPrice: number
-  ): { hasPullback: boolean; pullbackPercent: number; volumeConfirmation: boolean; confidence: number } {
-    if (candles.length < 10) {
-      return { hasPullback: false, pullbackPercent: 0, volumeConfirmation: false, confidence: 0 };
+  ): { 
+    hasPullback: boolean; 
+    pullbackPercent: number; 
+    volumeConfirmation: boolean; 
+    confidence: number;
+    isAtSupport: boolean; // THÊM: Có đang ở vùng hỗ trợ không
+    resistanceInfo: any; // THÊM: Thông tin kháng cự
+  } {
+    if (candles.length < 15) {
+      return { 
+        hasPullback: false, 
+        pullbackPercent: 0, 
+        volumeConfirmation: false, 
+        confidence: 0,
+        isAtSupport: false,
+        resistanceInfo: null
+      };
     }
 
-    const recentCandles = candles.slice(-8);
+    const recentCandles = candles.slice(-10);
     const currentCandle = recentCandles[recentCandles.length - 1];
     
+    // PHÂN TÍCH KHÁNG CỤ TRƯỚC
+    const resistanceInfo = this.analyzeResistanceLevel(symbol, candles, currentPrice);
+    
+    if (!resistanceInfo.hasResistance) {
+      return {
+        hasPullback: false,
+        pullbackPercent: 0,
+        volumeConfirmation: false,
+        confidence: 0,
+        isAtSupport: false,
+        resistanceInfo
+      };
+    }
+
+    // KIỂM TRA XEM CÓ ĐANG Ở VÙNG HỖ TRỢ (ĐÁY) KHÔNG - TRÁNH VÀO LỆNH Ở ĐÂY
+    const supportLevel = this.findSupportLevel(candles, 10);
+    const distanceToSupport = ((currentPrice - supportLevel) / currentPrice) * 100;
+    const isAtSupport = distanceToSupport < 2.0; // Quá gần hỗ trợ -> đáy
+
+    if (isAtSupport) {
+      return {
+        hasPullback: false,
+        pullbackPercent: 0,
+        volumeConfirmation: false,
+        confidence: 0,
+        isAtSupport: true,
+        resistanceInfo
+      };
+    }
+
+    // KIỂM TRA KHOẢNG CÁCH TỚI KHÁNG CỤ
+    const meetsResistanceDistance = 
+      resistanceInfo.distanceFromResistance >= STRATEGY_CONFIG.lowCapStrategy.resistanceBounce.minDistanceFromResistance &&
+      resistanceInfo.distanceFromResistance <= STRATEGY_CONFIG.lowCapStrategy.resistanceBounce.maxDistanceFromResistance;
+
+    if (!meetsResistanceDistance) {
+      return {
+        hasPullback: false,
+        pullbackPercent: 0,
+        volumeConfirmation: false,
+        confidence: 0,
+        isAtSupport: false,
+        resistanceInfo
+      };
+    }
+
+    // KIỂM TRA XU HƯỚNG GIẢM
+    const trendCandles = candles.slice(-5);
+    const downtrendCandles = trendCandles.filter((candle, index) => {
+      if (index === 0) return false;
+      return candle.close < trendCandles[index - 1].close;
+    });
+    
+    const hasDowntrend = downtrendCandles.length >= STRATEGY_CONFIG.lowCapStrategy.trendRequirements.minDowntrendCandles;
+
+    // KIỂM TRA GIÁ DƯỚI MA
+    const ma20 = this.calculateMA(candles, 20);
+    const priceBelowMA = currentPrice < ma20;
+
     const peakPrice = Math.max(...recentCandles.slice(0, -2).map(c => c.high));
     const pullbackPercent = ((peakPrice - currentPrice) / peakPrice) * 100;
 
@@ -2538,18 +2698,23 @@ class FakePumpStrategyBot {
       pullbackPercent <= STRATEGY_CONFIG.lowCapStrategy.pullbackConfirmation.maxRetracement;
 
     let confidence = 0;
-    if (meetsPullbackConditions) {
-      confidence += 40;
-      if (volumeConfirmation) confidence += 30;
+    if (meetsPullbackConditions && resistanceInfo.hasResistance && hasDowntrend) {
+      confidence += 30; // Điều kiện cơ bản
       
-      if (currentCandle.close < currentCandle.open) confidence += 30;
+      if (volumeConfirmation) confidence += 20;
+      if (priceBelowMA) confidence += 15;
+      if (resistanceInfo.resistanceStrength >= 2) confidence += 15;
+      if (resistanceInfo.distanceFromResistance > 3.0) confidence += 10;
+      if (currentCandle.close < currentCandle.open) confidence += 10;
     }
 
     return {
-      hasPullback: meetsPullbackConditions && confidence >= 70,
+      hasPullback: meetsPullbackConditions && confidence >= 70 && !isAtSupport,
       pullbackPercent,
       volumeConfirmation,
-      confidence
+      confidence,
+      isAtSupport,
+      resistanceInfo
     };
   }
 
@@ -2581,6 +2746,7 @@ class FakePumpStrategyBot {
     const randomSymbol = symbols[randomIndex];
     
     console.log(`\n🎯 [LOWCAP_DEBUG] PHÂN TÍCH CHI TIẾT COIN NGẪU NHIÊN: ${randomSymbol}`);
+    console.log('🎯 CHIẾN LƯỢC MỚI: VÀO LỆNH Ở KHÁNG CỤ - TRÁNH ĐÁY');
     console.log('=' .repeat(80));
 
     try {
@@ -2601,6 +2767,24 @@ class FakePumpStrategyBot {
       console.log(`📊 [LOWCAP_DEBUG] Volume 24h: ${(volume24h / 1000000).toFixed(2)}M USDT (yêu cầu: <${STRATEGY_CONFIG.lowCapStrategy.maxVolume24h/1000000}M)`);
       console.log(`📈 [LOWCAP_DEBUG] Độ biến động: ${indicators.dailyVolatility.toFixed(2)}% (yêu cầu: <${STRATEGY_CONFIG.lowCapStrategy.maxDailyVolatility}%)`);
       console.log(`⏰ [LOWCAP_DEBUG] Timeframe phân tích: 5 Minute Candles`);
+
+      // THÊM PHÂN TÍCH KHÁNG CỤ VÀO DEBUG
+      const resistanceInfo = this.analyzeResistanceLevel(randomSymbol, indicators.candles, currentPrice);
+      console.log(`\n🛡️ [LOWCAP_DEBUG] PHÂN TÍCH KHÁNG CỤ:`);
+      console.log(`   Có kháng cự: ${resistanceInfo.hasResistance}`);
+      console.log(`   Giá kháng cự: $${resistanceInfo.resistancePrice.toFixed(6)}`);
+      console.log(`   Khoảng cách: ${resistanceInfo.distanceFromResistance.toFixed(2)}%`);
+      console.log(`   Sức mạnh: ${resistanceInfo.resistanceStrength} lần test`);
+      console.log(`   Yêu cầu: ${resistanceInfo.distanceFromResistance >= 1.0 && resistanceInfo.distanceFromResistance <= 10.0 ? 'ĐẠT ✅' : 'KHÔNG ĐẠT ❌'}`);
+
+      // THÊM KIỂM TRA "CÓ Ở ĐÁY KHÔNG"
+      const supportLevel = this.findSupportLevel(indicators.candles, 10);
+      const distanceToSupport = ((currentPrice - supportLevel) / currentPrice) * 100;
+      const isAtSupport = distanceToSupport < 2.0;
+      console.log(`\n📉 [LOWCAP_DEBUG] PHÂN TÍCH ĐÁY/HỖ TRỢ:`);
+      console.log(`   Hỗ trợ: $${supportLevel.toFixed(6)}`);
+      console.log(`   Khoảng cách tới hỗ trợ: ${distanceToSupport.toFixed(2)}%`);
+      console.log(`   Có đang ở đáy: ${isAtSupport ? 'CÓ ⚠️ NGUY HIỂM' : 'KHÔNG ✅ AN TOÀN'}`);
 
       console.log(`\n🔍 [LOWCAP_DEBUG] PHÂN TÍCH ĐIỀU KIỆN LOW-CAP:`);
       
@@ -2640,11 +2824,24 @@ class FakePumpStrategyBot {
       console.log(`   📊 Trend Analysis: RSI quá mua + Downtrend xác nhận`);
       console.log(`   📈 Volume spike: ${volumeSpike.toFixed(1)}x (yêu cầu: >= ${STRATEGY_CONFIG.lowCapStrategy.volumeSpikeThreshold})`);
 
+      // THÊM ĐIỀU KIỆN XU HƯỚNG GIẢM
+      const ma20 = this.calculateMA(indicators.candles, 20);
+      const priceBelowMA = currentPrice < ma20;
+      
+      const trendCandles = indicators.candles.slice(-5);
+      const downtrendCandles = trendCandles.filter((candle, index) => {
+        if (index === 0) return false;
+        return candle.close < trendCandles[index - 1].close;
+      });
+      const hasDowntrend = downtrendCandles.length >= STRATEGY_CONFIG.lowCapStrategy.trendRequirements.minDowntrendCandles;
+
       const rsiCondition = rsi >= STRATEGY_CONFIG.lowCapStrategy.rsiOverbought;
       const trendCondition = trendStrength <= STRATEGY_CONFIG.lowCapStrategy.minTrendStrength;
       const volumeSpikeCondition = volumeSpike >= STRATEGY_CONFIG.lowCapStrategy.volumeSpikeThreshold;
+      const priceBelowMACondition = priceBelowMA;
+      const downtrendCondition = hasDowntrend;
 
-      const lowCapEntryConditions = rsiCondition && trendCondition && volumeSpikeCondition;
+      const lowCapEntryConditions = rsiCondition && trendCondition && volumeSpikeCondition && priceBelowMACondition && downtrendCondition;
       console.log(`   ✅ Low-cap entry conditions: ${lowCapEntryConditions}`);
 
       if (!lowCapEntryConditions) {
@@ -2652,20 +2849,37 @@ class FakePumpStrategyBot {
         if (!rsiCondition) console.log(`   - RSI: ${rsi.toFixed(1)} < ${STRATEGY_CONFIG.lowCapStrategy.rsiOverbought}`);
         if (!trendCondition) console.log(`   - Trend: ${trendStrength.toFixed(1)} > ${STRATEGY_CONFIG.lowCapStrategy.minTrendStrength}`);
         if (!volumeSpikeCondition) console.log(`   - Volume spike: ${volumeSpike.toFixed(1)}x < ${STRATEGY_CONFIG.lowCapStrategy.volumeSpikeThreshold}`);
+        if (!priceBelowMACondition) console.log(`   - Price below MA20: ${priceBelowMA} (yêu cầu: true)`);
+        if (!downtrendCondition) console.log(`   - Downtrend: ${hasDowntrend} (yêu cầu: true)`);
         return;
       }
 
-      const resistance = indicators.resistanceLevel;
+      // PHÂN TÍCH PULLBACK VỚI ĐIỀU KIỆN MỚI
+      const pullbackSignal = this.detectPullbackSignal(randomSymbol, indicators.candles, currentPrice);
+      console.log(`\n🔍 [LOWCAP_DEBUG] PHÂN TÍCH PULLBACK VÀ KHÁNG CỤ:`);
+      console.log(`   📉 Pullback: ${pullbackSignal.pullbackPercent.toFixed(2)}%`);
+      console.log(`   📊 Volume confirmation: ${pullbackSignal.volumeConfirmation}`);
+      console.log(`   🎯 Confidence: ${pullbackSignal.confidence}%`);
+      console.log(`   🛡️  Có kháng cự: ${pullbackSignal.resistanceInfo.hasResistance}`);
+      console.log(`   📍 Cách kháng cự: ${pullbackSignal.resistanceInfo.distanceFromResistance.toFixed(2)}%`);
+      console.log(`   ⚠️  Có ở đáy: ${pullbackSignal.isAtSupport ? 'CÓ - NGUY HIỂM' : 'KHÔNG - AN TOÀN'}`);
+
+      if (!pullbackSignal.hasPullback || pullbackSignal.isAtSupport) {
+        console.log(`\n❌ [LOWCAP_DEBUG] Không đạt điều kiện pullback hoặc đang ở đáy`);
+        return;
+      }
+
+      const resistance = pullbackSignal.resistanceInfo.resistancePrice;
       const support = indicators.supportLevel;
-      const potentialEntry = currentPrice * 0.99;
-      const stopLoss = resistance * 1.02;
-      const takeProfit = support * 0.85;
+      const potentialEntry = currentPrice;
+      const stopLoss = resistance * 1.03; // SL trên kháng cự
+      const takeProfit = support * 0.9;   // TP dưới hỗ trợ
       const riskReward = this.calculateRiskRewardRatio(potentialEntry, stopLoss, takeProfit);
 
       console.log(`\n🎯 [LOWCAP_DEBUG] PHÂN TÍCH RISK/REWARD:`);
       console.log(`   🎯 Entry: $${potentialEntry.toFixed(6)}`);
-      console.log(`   🛡️  Stop Loss: $${stopLoss.toFixed(6)}`);
-      console.log(`   ✅ Take Profit: $${takeProfit.toFixed(6)}`);
+      console.log(`   🛡️  Stop Loss: $${stopLoss.toFixed(6)} (trên kháng cự)`);
+      console.log(`   ✅ Take Profit: $${takeProfit.toFixed(6)} (dưới hỗ trợ)`);
       console.log(`   📊 Risk/Reward: ${riskReward.ratio.toFixed(2)} (yêu cầu: >= ${STRATEGY_CONFIG.lowCapStrategy.riskRewardRatio.min})`);
 
       const rrCondition = riskReward.ratio >= STRATEGY_CONFIG.lowCapStrategy.riskRewardRatio.min;
@@ -2676,27 +2890,17 @@ class FakePumpStrategyBot {
         return;
       }
 
-      const pullbackSignal = this.detectPullbackSignal(randomSymbol, indicators.candles, currentPrice);
-      console.log(`\n🔍 [LOWCAP_DEBUG] PHÂN TÍCH PULLBACK:`);
-      console.log(`   📉 Pullback: ${pullbackSignal.pullbackPercent.toFixed(2)}%`);
-      console.log(`   📊 Volume confirmation: ${pullbackSignal.volumeConfirmation}`);
-      console.log(`   🎯 Confidence: ${pullbackSignal.confidence}%`);
-
-      if (!pullbackSignal.hasPullback) {
-        console.log(`\n❌ [LOWCAP_DEBUG] Chưa có pullback confirmation`);
-        return;
-      }
-
       console.log(`\n🎯 [LOWCAP_DEBUG] 🎉 COIN ĐẠT TẤT CẢ ĐIỀU KIỆN LOW-CAP!`);
       console.log(`   ✅ Basic conditions: ĐẠT`);
       console.log(`   ✅ Entry conditions: ĐẠT`);
+      console.log(`   ✅ Resistance analysis: ĐẠT`);
+      console.log(`   ✅ Not at bottom: ĐẠT`);
       console.log(`   ✅ Risk/Reward: ĐẠT (${riskReward.ratio.toFixed(2)})`);
-      console.log(`   ✅ Pullback: ĐẠT (${pullbackSignal.pullbackPercent.toFixed(2)}%)`);
       console.log(`   ⏰ Timeframe: 5 Minute Candles`);
-      console.log(`   🚀 Có thể vào lệnh SHORT!`);
+      console.log(`   🚀 Có thể vào lệnh SHORT ở vùng kháng cự!`);
 
       // THÊM COIN VÀO DANH SÁCH TRACKING NẾU ĐẠT ĐIỀU KIỆN
-      if (lowCapBasicConditions && lowCapEntryConditions && rrCondition && pullbackSignal.hasPullback) {
+      if (lowCapBasicConditions && lowCapEntryConditions && rrCondition && pullbackSignal.hasPullback && !pullbackSignal.isAtSupport) {
         const trackingData: LowCapTrackingData = {
           symbol: randomSymbol,
           addedAt: now,
@@ -2712,8 +2916,15 @@ class FakePumpStrategyBot {
           status: 'TRACKING',
           resistanceLevel: resistance,
           supportLevel: support,
-          confidence: Math.min(Math.abs(trendStrength) * 20 + (volumeSpike * 5), 100),
-          listingAgeDays
+          confidence: Math.min(
+            Math.abs(trendStrength) * 15 + 
+            (volumeSpike * 5) + 
+            (pullbackSignal.resistanceInfo.resistanceStrength * 10) +
+            (pullbackSignal.confidence / 2),
+            100
+          ),
+          listingAgeDays,
+          resistanceInfo: pullbackSignal.resistanceInfo
         };
 
         this.lowCapTrackingCoins.set(randomSymbol, trackingData);
@@ -2785,25 +2996,56 @@ class FakePumpStrategyBot {
           const trendStrength = this.calculateTrendStrength(indicators.candles);
           const volumeSpike = indicators.volumeSpike;
 
+          // THÊM ĐIỀU KIỆN XU HƯỚNG GIẢM
+          const ma20 = this.calculateMA(indicators.candles, 20);
+          const priceBelowMA = currentPrice < ma20;
+          
+          const trendCandles = indicators.candles.slice(-5);
+          const downtrendCandles = trendCandles.filter((candle, index) => {
+            if (index === 0) return false;
+            return candle.close < trendCandles[index - 1].close;
+          });
+          const hasDowntrend = downtrendCandles.length >= STRATEGY_CONFIG.lowCapStrategy.trendRequirements.minDowntrendCandles;
+
           const meetsEntryConditions = 
             rsi >= STRATEGY_CONFIG.lowCapStrategy.rsiOverbought &&
             trendStrength <= STRATEGY_CONFIG.lowCapStrategy.minTrendStrength &&
-            volumeSpike >= STRATEGY_CONFIG.lowCapStrategy.volumeSpikeThreshold;
+            volumeSpike >= STRATEGY_CONFIG.lowCapStrategy.volumeSpikeThreshold &&
+            priceBelowMA && // THÊM: Giá phải dưới MA20
+            hasDowntrend; // THÊM: Phải có xu hướng giảm
 
           if (meetsEntryConditions) {
-            const resistance = indicators.resistanceLevel;
-            const support = indicators.supportLevel;
+            // PHÂN TÍCH KHÁNG CỤ TRƯỚC KHI QUYẾT ĐỊNH
+            const resistanceInfo = this.analyzeResistanceLevel(symbol, indicators.candles, currentPrice);
             
-            const potentialEntry = currentPrice * 0.99;
-            const stopLoss = resistance * 1.02;
-            const takeProfit = support * 0.85;
-            
-            const riskReward = this.calculateRiskRewardRatio(potentialEntry, stopLoss, takeProfit);
+            if (!resistanceInfo.hasResistance) {
+              return; // KHÔNG có kháng cự rõ ràng -> bỏ qua
+            }
 
-            if (riskReward.ratio >= STRATEGY_CONFIG.lowCapStrategy.riskRewardRatio.min) {
-              const pullbackSignal = this.detectPullbackSignal(symbol, indicators.candles, currentPrice);
+            // KIỂM TRA KHOẢNG CÁCH TỚI KHÁNG CỤ
+            const meetsResistanceDistance = 
+              resistanceInfo.distanceFromResistance >= STRATEGY_CONFIG.lowCapStrategy.resistanceBounce.minDistanceFromResistance &&
+              resistanceInfo.distanceFromResistance <= STRATEGY_CONFIG.lowCapStrategy.resistanceBounce.maxDistanceFromResistance;
+
+            if (!meetsResistanceDistance) {
+              return;
+            }
+
+            const pullbackSignal = this.detectPullbackSignal(symbol, indicators.candles, currentPrice);
+            
+            // CHỈ VÀO LỆNH KHI CÓ PULLBACK VÀ KHÔNG Ở VÙNG ĐÁY
+            if (pullbackSignal.hasPullback && !pullbackSignal.isAtSupport) {
+              const resistance = resistanceInfo.resistancePrice;
+              const support = indicators.supportLevel;
               
-              if (pullbackSignal.hasPullback) {
+              // ĐIỀU CHỈNH ENTRY: Vào ở currentPrice (sau khi đã bật lại từ kháng cự)
+              const potentialEntry = currentPrice;
+              const stopLoss = resistance * 1.03; // SL trên kháng cự một chút
+              const takeProfit = support * 0.9;   // TP gần hỗ trợ
+              
+              const riskReward = this.calculateRiskRewardRatio(potentialEntry, stopLoss, takeProfit);
+
+              if (riskReward.ratio >= STRATEGY_CONFIG.lowCapStrategy.riskRewardRatio.min) {
                 const trackingData: LowCapTrackingData = {
                   symbol,
                   addedAt: now,
@@ -2819,8 +3061,15 @@ class FakePumpStrategyBot {
                   status: 'TRACKING',
                   resistanceLevel: resistance,
                   supportLevel: support,
-                  confidence: Math.min(Math.abs(trendStrength) * 20 + (volumeSpike * 5), 100),
-                  listingAgeDays
+                  confidence: Math.min(
+                    Math.abs(trendStrength) * 15 + 
+                    (volumeSpike * 5) + 
+                    (resistanceInfo.resistanceStrength * 10) +
+                    (pullbackSignal.confidence / 2),
+                    100
+                  ),
+                  listingAgeDays,
+                  resistanceInfo: resistanceInfo
                 };
 
                 this.lowCapTrackingCoins.set(symbol, trackingData);
@@ -2828,20 +3077,21 @@ class FakePumpStrategyBot {
                 
                 console.log(`✅ [LOWCAP_FOUND] ${symbol} | Price: $${currentPrice.toFixed(6)} | Volume: ${(volume24h/1000000).toFixed(2)}M`);
                 console.log(`   📊 RSI: ${rsi.toFixed(1)} | Trend: ${trendStrength.toFixed(1)} | Volume Spike: ${volumeSpike.toFixed(1)}x`);
-                console.log(`   🎯 R/R: ${riskReward.ratio.toFixed(2)} | Confidence: ${trackingData.confidence.toFixed(1)}% | Age: ${listingAgeDays.toFixed(1)} days`);
-                console.log(`   ⏰ Timeframe: 5 Minute Analysis`);
-                console.log(`   📉 Pullback: ${pullbackSignal.pullbackPercent.toFixed(2)}% | Volume Confirmation: ${pullbackSignal.volumeConfirmation}`);
+                console.log(`   🎯 R/R: ${riskReward.ratio.toFixed(2)} | Conf: ${trackingData.confidence.toFixed(1)}% | Age: ${listingAgeDays.toFixed(1)}d`);
+                console.log(`   🛡️  Resistance: $${resistance.toFixed(6)} | Distance: ${resistanceInfo.distanceFromResistance.toFixed(1)}%`);
+                console.log(`   📉 Pullback: ${pullbackSignal.pullbackPercent.toFixed(2)}% | Not at support ✅`);
               }
             }
           }
 
         } catch (error) {
+          // Xử lý lỗi
         }
       }
     );
 
     if (foundLowCap > 0) {
-      console.log(`✅ [LOWCAP_RESULT] Tìm thấy ${foundLowCap} coin Low-Cap tiềm năng (5M Analysis)`);
+      console.log(`✅ [LOWCAP_RESULT] Tìm thấy ${foundLowCap} coin Low-Cap tiềm năng (TRÁNH ĐÁY)`);
     }
   }
 
@@ -2869,17 +3119,17 @@ class FakePumpStrategyBot {
 
         const pullbackSignal = this.detectPullbackSignal(symbol, indicators.candles, currentPrice);
 
-        console.log(`🔍 [LOWCAP_MONITOR] ${symbol}: Pullback ${pullbackSignal.pullbackPercent.toFixed(2)}%, Confidence ${pullbackSignal.confidence}%, Status ${trackingData.status}`);
+        console.log(`🔍 [LOWCAP_MONITOR] ${symbol}: Pullback ${pullbackSignal.pullbackPercent.toFixed(2)}%, Confidence ${pullbackSignal.confidence}%, At Support: ${pullbackSignal.isAtSupport}, Status ${trackingData.status}`);
 
-        if (pullbackSignal.hasPullback && trackingData.status === 'TRACKING') {
-          console.log(`🎯 [LOWCAP_PULLBACK] ${symbol} | Pullback: ${pullbackSignal.pullbackPercent.toFixed(2)}% | Confidence: ${pullbackSignal.confidence}%`);
+        if (pullbackSignal.hasPullback && !pullbackSignal.isAtSupport && trackingData.status === 'TRACKING') {
+          console.log(`🎯 [LOWCAP_PULLBACK] ${symbol} | Pullback: ${pullbackSignal.pullbackPercent.toFixed(2)}% | Confidence: ${pullbackSignal.confidence}% | Not at bottom ✅`);
           
           trackingData.status = 'READY_TO_ENTER';
           trackingData.pullbackLevel = pullbackSignal.pullbackPercent;
         }
 
-        if (trackingData.status === 'READY_TO_ENTER' && pullbackSignal.confidence >= 70) {
-          console.log(`🚀 [LOWCAP_ENTERING] ${symbol} | Bắt đầu vào lệnh...`);
+        if (trackingData.status === 'READY_TO_ENTER' && pullbackSignal.confidence >= 70 && !pullbackSignal.isAtSupport) {
+          console.log(`🚀 [LOWCAP_ENTERING] ${symbol} | Bắt đầu vào lệnh ở vùng kháng cự...`);
           await this.enterLowCapPosition(symbol, trackingData);
           trackingData.status = 'ENTERED';
         }
@@ -2901,6 +3151,17 @@ class FakePumpStrategyBot {
       const currentPrice = await this.getCurrentPrice(symbol);
       if (currentPrice <= 0) return;
 
+      // KIỂM TRA LẠI ĐIỀU KIỆN TRƯỚC KHI VÀO LỆNH
+      const indicators = await this.calculateLowCapIndicators(symbol);
+      const pullbackSignal = this.detectPullbackSignal(symbol, indicators.candles, currentPrice);
+      
+      // CHỈ VÀO LỆNH NẾU VẪN THỎA MÃN ĐIỀU KIỆN VÀ KHÔNG Ở ĐÁY
+      if (!pullbackSignal.hasPullback || pullbackSignal.isAtSupport) {
+        console.log(`⏹️ [LOWCAP_SKIP] ${symbol} | Điều kiện đã thay đổi - không vào lệnh`);
+        this.lowCapTrackingCoins.delete(symbol);
+        return;
+      }
+
       const positionSize = await this.calculatePositionSize(
         symbol, 
         STRATEGY_CONFIG.lowCapStrategy.positionSizePercent,
@@ -2909,16 +3170,19 @@ class FakePumpStrategyBot {
 
       if (positionSize <= 0) return;
 
-      const stopLoss = trackingData.resistanceLevel * 1.02;
-      const takeProfit = trackingData.supportLevel * 0.85;
+      // SỬ DỤNG KHÁNG CỤ ĐỂ ĐẶT SL/TP
+      const stopLoss = trackingData.resistanceLevel * 1.03; // SL trên kháng cự
+      const takeProfit = trackingData.supportLevel * 0.9;   // TP dưới hỗ trợ
 
       const riskReward = this.calculateRiskRewardRatio(currentPrice, stopLoss, takeProfit);
 
       console.log(`🚀 [LOWCAP_ENTERING] ${symbol} | Price: $${currentPrice.toFixed(6)}`);
-      console.log(`   SL: $${stopLoss.toFixed(6)} | TP: $${takeProfit.toFixed(6)} | R/R: ${riskReward.ratio.toFixed(2)}`);
-      console.log(`   ⏰ Timeframe: 5 Minute Analysis`);
+      console.log(`   🛡️  Resistance: $${trackingData.resistanceLevel.toFixed(6)}`);
+      console.log(`   📍 Support: $${trackingData.supportLevel.toFixed(6)}`);
+      console.log(`   🛑 SL: $${stopLoss.toFixed(6)} | ✅ TP: $${takeProfit.toFixed(6)} | R/R: ${riskReward.ratio.toFixed(2)}`);
+      console.log(`   ⚠️  Vào lệnh ở vùng kháng cự - TRÁNH ĐÁY`);
 
-      const openResult = await this.openPosition(symbol, positionSize, 'SHORT', `LOW_CAP_${trackingData.marketCondition}`);
+      const openResult = await this.openPosition(symbol, positionSize, 'SHORT', `LOW_CAP_RESISTANCE`);
 
       if (openResult.success) {
         const takeProfitLevels: TakeProfitLevel[] = [
@@ -2956,7 +3220,7 @@ class FakePumpStrategyBot {
           side: 'SHORT',
           averagePrice: currentPrice,
           totalQty: positionSize,
-          signalType: `LOW_CAP_${trackingData.marketCondition}`,
+          signalType: `LOW_CAP_RESISTANCE`,
           positionId: openResult.positionId || this.orderManager.generatePositionId(),
           realPositionId: openResult.realPositionId,
           checkCount: 0,
@@ -2967,7 +3231,7 @@ class FakePumpStrategyBot {
           consecutiveDcaCount: 0,
           aggressiveDcaMode: false,
           totalDcaVolume: 0,
-          maxDcaVolume: positionSize * 4, // Tăng lên 4 lần để cho phép DCA
+          maxDcaVolume: positionSize * 4,
           confidence: trackingData.confidence,
           positiveDcaCount: 0,
           extendedTpLevels: [],
@@ -2977,7 +3241,6 @@ class FakePumpStrategyBot {
           dcaDisabled: false,
           totalDcaPercent: 0,
           trendStrength: trackingData.trendStrength,
-          // CÁC TRƯỜNG MỚI ĐƯỢC THÊM
           lastDcaPrice: currentPrice,
           lastNegativeDcaPrice: currentPrice,
           lastPositiveDcaPrice: currentPrice,
@@ -2990,7 +3253,7 @@ class FakePumpStrategyBot {
         this.positions.set(symbol, position);
         this.lowCapTrackingCoins.delete(symbol);
 
-        console.log(`✅ [LOWCAP_POSITION_OPENED] ${symbol} | Size: ${positionSize} | R/R: ${riskReward.ratio.toFixed(2)} | 5M Analysis`);
+        console.log(`✅ [LOWCAP_POSITION_OPENED] ${symbol} | Size: ${positionSize} | R/R: ${riskReward.ratio.toFixed(2)} | Entry at resistance ✅`);
 
       }
 
@@ -3346,7 +3609,6 @@ class FakePumpStrategyBot {
         dcaDisabled: false,
         totalDcaPercent: 0,
         trendStrength: 0,
-        // CÁC TRƯỜNG MỚI ĐƯỢC THÊM
         lastDcaPrice: actualPrice,
         lastNegativeDcaPrice: actualPrice,
         lastPositiveDcaPrice: actualPrice,
@@ -3547,15 +3809,16 @@ class FakePumpStrategyBot {
     console.log('⚠️  RISK: Cho phép vào lệnh cả RISK HIGH');
     console.log('⏰ CONDITIONS: Coin age > 14 days');
     
-    console.log('\n🎯 LOW-CAP STRATEGY ACTIVATED - ĐIỀU KIỆN NỚI LỎNG');
+    console.log('\n🎯 LOW-CAP STRATEGY ACTIVATED - VÀO LỆNH Ở KHÁNG CỤ');
     console.log('📊 VOLUME: < 15M USDT');
     console.log('💰 POSITION: 10% tài khoản');
     console.log('💰 PRICE RANGE: $0.0001 - $5.0');
-    console.log('📉 CONDITIONS: RSI > 60 + Downtrend + Volume Spike 1.5x');
+    console.log('📉 CONDITIONS: RSI > 65 + Downtrend + Volume Spike 1.5x');
     console.log('⏰ TIMEFRAME: 5 Minute Candles for Analysis');
-    console.log('⚡ ENTRY: After pullback confirmation (0.5% - 20.0%)');
-    console.log('🎯 RISK/REWARD: Min 1.0:1');
+    console.log('⚡ ENTRY: After resistance bounce (1-10% từ kháng cự)');
+    console.log('🎯 RISK/REWARD: Min 1.2:1');
     console.log('⏰ COIN AGE: > 5 days required');
+    console.log('🛡️  CHIẾN LƯỢC MỚI: TRÁNH VÀO LỆNH Ở ĐÁY');
 
     console.log('\n🔍 [LOWCAP_DEBUG] Sẽ hiển thị phân tích chi tiết 1 coin ngẫu nhiên cho Low-Cap mỗi 30 giây\n');
     
