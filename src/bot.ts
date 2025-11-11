@@ -48,46 +48,12 @@ interface Order {
   status: 'OPEN' | 'FILLED' | 'CANCELED' | 'REJECTED';
   createdAt: Date;
 }
-interface MexcSpotBalance {
-  code: number;
-  data: {
-    balances: Array<{
-      asset: string;
-      free: string;
-      locked: string;
-    }>;
-  };
-}
 
-interface MexcTransferResponse {
-  code: number;
-  msg?: string;
-  data?: any;
-}
-
-interface MexcAccountAsset {
-  code: number;
-  data: {
-    availableBalance: number;
-    [key: string]: any;
-  };
-}
-
-interface MexcOpenPositions {
-  code: number;
-  data: any[];
-}
-
-interface MexcOrderResponse {
-  code: number;
-  data: string | { orderId: string; positionId?: string };
-  msg?: string;
-}
 const STRATEGY_CONFIG = {
-  initialPositionPercent: 0.05,
+  initialPositionPercent: 0.15,
   maxTotalPositionPercent: 0.28,
   max24hChangePercent: 30,
-  maxVolume24h: 6000000,
+  maxVolume24h: 4000000,
   minVolume24h: 10000,
   maxHotCoinVolume: 50000000,
   targetLowVolumeCoins: 500,
@@ -99,17 +65,6 @@ const STRATEGY_CONFIG = {
   emaPeriod: 21,
   resistanceLookback: 20,
   volumeDropThreshold: 0.6,
-  
-  // CẤU HÌNH TỰ ĐỘNG CHUYỂN TIỀN
-  autoTransfer: {
-    enabled: true,
-    checkInterval: 20000, // 20 giây
-    minFutureBalance: 10, // Số dư futures tối thiểu để kích hoạt chuyển tiền ($)
-    transferAmount: 50, // Số tiền chuyển mỗi lần ($)
-    maxTotalTransfer: 1000, // Tổng số tiền chuyển tối đa ($)
-    spotToFuture: true, // Chuyển từ spot sang futures
-    otherAccounts: false // Có chuyển từ các tài khoản khác không (nếu có API)
-  },
   
   pumpStrategy: {
     minRetracePercent: 3, 
@@ -145,9 +100,9 @@ const STRATEGY_CONFIG = {
     // Phần trăm vốn sử dụng cho mỗi lần DCA
     dcaPercent: 0.05,
     // Số lần DCA tối đa theo chiến lược mới
-    maxDcaCount: 5,
+    maxDcaCount: 12,
     // Tổng phần trăm vốn tối đa cho DCA mới
-    maxTotalDcaPercent: 0.25,
+    maxTotalDcaPercent: 0.05,
     // Khoảng cách tối thiểu giữa các lần DCA (ms)
     minDcaInterval: 180000,
     // Biến động giá tối thiểu để DCA (%)
@@ -512,11 +467,6 @@ class FakePumpStrategyBot {
   private lastAllTickersUpdate: number = 0;
   private readonly ALL_TICKERS_CACHE_TTL = 10000; // 10 seconds
 
-  // BIẾN MỚI CHO TỰ ĐỘNG CHUYỂN TIỀN
-  private lastTransferCheck: number = 0;
-  private totalTransferred: number = 0;
-  private transferInProgress: boolean = false;
-
   constructor() {
     console.log('🤖 FAKE PUMP STRATEGY BOT - GỒNG LỆNH KHÔNG SL HOÀN TOÀN');
     console.log('🎯 VOLUME TỐI ĐA: 6M USDT');
@@ -530,169 +480,42 @@ class FakePumpStrategyBot {
     console.log('🎯 TP: 50% tại +5% | 50% theo trend');
     console.log('⚠️  SL CỨNG: -80% sau khi max DCA');
     console.log('📈 XU HƯỚNG: EMA200 (4H + 1H)');
-    console.log('💸 TỰ ĐỘNG CHUYỂN TIỀN: 20s kiểm tra 1 lần, chuyển $50 khi futures < $10');
-  }
-
-  // HÀM MỚI: LẤY SỐ DƯ SPOT
-  private async getSpotBalance(): Promise<number> {
-    try {
-      // Sử dụng API khác để lấy số dư spot
-      // Lưu ý: Đây là ví dụ, cần thay thế bằng API thực tế của MEXC
-      const response = await withRetry(async () => {
-        return await axios.get("https://www.mexc.com/open/api/v2/account/info", {
-          headers: {
-            'ApiKey': WEB_TOKEN,
-            'Content-Type': 'application/json'
-          }
-        });
-      });
-      const data = response.data as MexcSpotBalance;
-     if (data && data.code === 200 && data.data) {
-          const balances = data.data.balances || [];
-          const usdtBalance = balances.find((b: any) => b.asset === 'USDT');
-          return parseFloat(usdtBalance?.free || '0');
-        }
-        return 0;
-      } catch (error: any) {
-        console.error('❌ [SPOT_BALANCE_ERROR] Lỗi khi lấy số dư spot:', error.message);
-        return 0;
-      }
-  }
-
-  // HÀM MỚI: CHUYỂN TIỀN TỪ SPOT SANG FUTURES
-private async transferSpotToFutures(amount: number): Promise<boolean> {
-  try {
-    console.log(`🔄 [TRANSFER] Đang chuyển $${amount} từ spot sang futures...`);
-    
-    const response = await withRetry(async () => {
-      return await axios.post<MexcTransferResponse>(
-        "https://www.mexc.com/open/api/v2/transfer",
-        {
-          from: 'SPOT',
-          to: 'FUTURES', 
-          asset: 'USDT',
-          amount: amount
-        },
-        {
-          headers: {
-            'ApiKey': WEB_TOKEN,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-    });
-    
-    // Ép kiểu response data
-    const data = response.data as MexcTransferResponse;
-    
-    if (data && data.code === 0) {
-      console.log(`✅ [TRANSFER_SUCCESS] Đã chuyển $${amount} từ spot sang futures`);
-      this.totalTransferred += amount;
-      return true;
-    } else {
-      console.log(`❌ [TRANSFER_FAILED] Không thể chuyển tiền:`, data?.msg || 'Unknown error');
-      return false;
-    }
-  } catch (error: any) {
-    console.error('❌ [TRANSFER_ERROR] Lỗi khi chuyển tiền:', error.message);
-    return false;
-  }
-}
-
-  // HÀM MỚI: KIỂM TRA VÀ TỰ ĐỘNG CHUYỂN TIỀN
-  private async checkAndTransferFunds(): Promise<void> {
-    if (!STRATEGY_CONFIG.autoTransfer.enabled) return;
-    
-    const now = Date.now();
-    if (now - this.lastTransferCheck < STRATEGY_CONFIG.autoTransfer.checkInterval) {
-      return;
-    }
-
-    if (this.transferInProgress) {
-      return;
-    }
-
-    this.lastTransferCheck = now;
-
-    try {
-      // Kiểm tra số dư futures hiện tại
-      const currentFutureBalance = await this.getUSDTBalance();
-      
-      // Nếu số dư futures thấp hơn mức tối thiểu
-      if (currentFutureBalance < STRATEGY_CONFIG.autoTransfer.minFutureBalance) {
-        
-        // Kiểm tra tổng số tiền đã chuyển
-        if (this.totalTransferred >= STRATEGY_CONFIG.autoTransfer.maxTotalTransfer) {
-          console.log(`⚠️ [TRANSFER_LIMIT] Đã đạt giới hạn chuyển tiền: $${this.totalTransferred}`);
-          return;
-        }
-
-        // Lấy số dư spot
-        const spotBalance = await this.getSpotBalance();
-        
-        if (spotBalance > STRATEGY_CONFIG.autoTransfer.transferAmount) {
-          this.transferInProgress = true;
-          
-          const transferAmount = Math.min(
-            STRATEGY_CONFIG.autoTransfer.transferAmount,
-            spotBalance,
-            STRATEGY_CONFIG.autoTransfer.maxTotalTransfer - this.totalTransferred
-          );
-
-          const success = await this.transferSpotToFutures(transferAmount);
-          
-          if (success) {
-            // Cập nhật số dư tài khoản sau khi chuyển
-            this.accountBalance = await this.getUSDTBalance();
-            console.log(`💰 [BALANCE_UPDATE] Số dư futures mới: $${this.accountBalance.toFixed(2)}`);
-          }
-          
-          this.transferInProgress = false;
-        } else {
-          console.log(`⚠️ [INSUFFICIENT_SPOT] Không đủ tiền trong spot: $${spotBalance.toFixed(2)}`);
-        }
-      }
-    } catch (error: any) {
-      console.error('❌ [AUTO_TRANSFER_ERROR] Lỗi tự động chuyển tiền:', error.message);
-      this.transferInProgress = false;
-    }
   }
 
   // Batch API methods
-private async updateAllTickersCache(): Promise<void> {
-  const now = Date.now();
-  if (now - this.lastAllTickersUpdate < this.ALL_TICKERS_CACHE_TTL) {
-    return;
-  }
+  private async updateAllTickersCache(): Promise<void> {
+    const now = Date.now();
+    if (now - this.lastAllTickersUpdate < this.ALL_TICKERS_CACHE_TTL) {
+      return;
+    }
 
-  try {
-    const response = await withRetry(async () => {
-      return await axios.get<MexcResponse<TickerDataResponse[]>>("https://futures.mexc.co/api/v1/contract/ticker");
-    });
-    
-    // Ép kiểu data
-    const data = response.data as MexcResponse<TickerDataResponse[]>;
-    
-    if (data && data.code === 0 && Array.isArray(data.data)) {
-      this.allTickersCache.clear();
-      
-      data.data.forEach((ticker: TickerDataResponse) => {
-        const symbol = ticker.symbol.replace('_USDT', 'USDT');
-        this.allTickersCache.set(symbol, {
-          symbol,
-          lastPrice: parseFloat(ticker.lastPrice) || 0,
-          change24h: parseFloat(ticker.rose) * 100 || 0,
-          amount24: parseFloat(ticker.amount24) || 0
-        });
+    try {
+      const response = await withRetry(async () => {
+        return await axios.get("https://futures.mexc.co/api/v1/contract/ticker");
       });
       
-      this.lastAllTickersUpdate = now;
-      console.log(`✅ [BATCH_TICKERS] Đã cập nhật ${this.allTickersCache.size} tickers`);
+      const data = response.data as MexcResponse<TickerDataResponse[]>;
+      
+      if (data && data.code === 0 && Array.isArray(data.data)) {
+        this.allTickersCache.clear();
+        
+        data.data.forEach((ticker: TickerDataResponse) => {
+          const symbol = ticker.symbol.replace('_USDT', 'USDT');
+          this.allTickersCache.set(symbol, {
+            symbol,
+            lastPrice: parseFloat(ticker.lastPrice) || 0,
+            change24h: parseFloat(ticker.rose) * 100 || 0,
+            amount24: parseFloat(ticker.amount24) || 0
+          });
+        });
+        
+        this.lastAllTickersUpdate = now;
+        console.log(`✅ [BATCH_TICKERS] Đã cập nhật ${this.allTickersCache.size} tickers`);
+      }
+    } catch (error: any) {
+      console.error('❌ [BATCH_TICKERS_ERROR] Lỗi khi lấy batch tickers:', error.message);
     }
-  } catch (error: any) {
-    console.error('❌ [BATCH_TICKERS_ERROR] Lỗi khi lấy batch tickers:', error.message);
   }
-}
 
   // Sửa phương thức getTicker24hData để dùng batch cache
   private async getTicker24hData(symbol: string): Promise<TickerData | null> {
@@ -712,33 +535,43 @@ private async updateAllTickersCache(): Promise<void> {
   }
 
   // Thêm hàm getContractInfo bị thiếu
-async getContractInfo(symbol: string): Promise<ContractInfo> {
-  // Kiểm tra symbol hợp lệ trước
-  if (!this.validSymbolsCache.has(symbol)) {
-    return this.getFallbackContractInfo(symbol, symbol.replace('USDT', '_USDT'));
-  }
+  async getContractInfo(symbol: string): Promise<ContractInfo> {
+    // Kiểm tra symbol hợp lệ trước
+    if (!this.validSymbolsCache.has(symbol)) {
+      return this.getFallbackContractInfo(symbol, symbol.replace('USDT', '_USDT'));
+    }
 
-  const cacheKey = symbol.replace('USDT', '_USDT');
-  
-  if (this.contractInfoCache.has(cacheKey)) {
-    return this.contractInfoCache.get(cacheKey)!;
-  }
+    const cacheKey = symbol.replace('USDT', '_USDT');
+    
+    if (this.contractInfoCache.has(cacheKey)) {
+      return this.contractInfoCache.get(cacheKey)!;
+    }
 
-  try {
-    const response = await withRetry(async () => {
-      const result = await axios.get<MexcResponse<any[]>>("https://futures.mexc.co/api/v1/contract/detail");
-      return result;
-    });
-    
-    // Ép kiểu data
-    const data = response.data as MexcResponse<any[]>;
-    let contractInfo: ContractInfo;
-    
-    if (data && data.code === 0 && Array.isArray(data.data)) {
-      const contracts = data.data;
-      const info = contracts.find((c: any) => c.symbol === cacheKey);
+    try {
+      const response = await withRetry(async () => {
+        const result = await axios.get<any>("https://futures.mexc.co/api/v1/contract/detail");
+        return result;
+      });
       
-      if (info) {
+      const data = response.data;
+      let contractInfo: ContractInfo;
+      
+      if (Array.isArray(data.data)) {
+        const contracts = data.data;
+        const info = contracts.find((c: any) => c.symbol === cacheKey);
+        
+        if (info) {
+          contractInfo = {
+            symbol: cacheKey,
+            contractSize: info.contractSize || 1,
+            pricePrecision: info.priceScale || 5,
+            volumePrecision: info.volScale || 0
+          };
+        } else {
+          contractInfo = this.getFallbackContractInfo(symbol, cacheKey);
+        }
+      } else if (data.data && typeof data.data === 'object') {
+        const info = data.data as any;
         contractInfo = {
           symbol: cacheKey,
           contractSize: info.contractSize || 1,
@@ -748,26 +581,14 @@ async getContractInfo(symbol: string): Promise<ContractInfo> {
       } else {
         contractInfo = this.getFallbackContractInfo(symbol, cacheKey);
       }
-    } else if (data && data.code === 0 && data.data && typeof data.data === 'object') {
-      const info = data.data as any;
-      contractInfo = {
-        symbol: cacheKey,
-        contractSize: info.contractSize || 1,
-        pricePrecision: info.priceScale || 5,
-        volumePrecision: info.volScale || 0
-      };
-    } else {
-      contractInfo = this.getFallbackContractInfo(symbol, cacheKey);
+
+      this.contractInfoCache.set(cacheKey, contractInfo);
+      return contractInfo;
+
+    } catch (error: any) {
+      return this.getFallbackContractInfo(symbol, cacheKey);
     }
-
-    this.contractInfoCache.set(cacheKey, contractInfo);
-    return contractInfo;
-
-  } catch (error: any) {
-    console.error(`❌ [CONTRACT_INFO_ERROR] Lỗi khi lấy thông tin contract ${symbol}:`, error.message);
-    return this.getFallbackContractInfo(symbol, cacheKey);
   }
-}
 
   private getFallbackContractInfo(symbol: string, cacheKey: string): ContractInfo {
     let contractSize = 1;
@@ -852,7 +673,7 @@ async getContractInfo(symbol: string): Promise<ContractInfo> {
         console.error('❌ [VALIDATE_SYMBOLS_ERROR] Lỗi khi kiểm tra symbol:', error);
     }
   }
-  
+
   private async analyzeLongTermTrend(symbol: string): Promise<TrendAnalysis> {
     const cacheKey = symbol;
     const cached = this.trendAnalysisCache.get(cacheKey);
@@ -1978,21 +1799,15 @@ async getContractInfo(symbol: string): Promise<ContractInfo> {
     };
   }
 
-async getUSDTBalance(): Promise<number> {
-  try {
-    const usdtAsset = await client.getAccountAsset('USDT') as any;
-    // Ép kiểu response
-    const response = usdtAsset as MexcAccountAsset;
-    
-    if (response && response.code === 0 && response.data) {
-      return response.data.availableBalance || 0;
+  async getUSDTBalance(): Promise<number> {
+    try {
+      const usdtAsset = await client.getAccountAsset('USDT') as any;
+      return usdtAsset.data.availableBalance;
+    } catch (e: any) {
+      return 0;
     }
-    return 0;
-  } catch (e: any) {
-    console.error('❌ [BALANCE_ERROR] Lỗi khi lấy số dư:', e.message);
-    return 0;
   }
-}
+
   private async calculatePositionSize(symbol: string, percent: number, confidence: number = 50): Promise<number> {
     try {
       const currentPrice = await this.getCurrentPrice(symbol);
@@ -2384,47 +2199,67 @@ async getUSDTBalance(): Promise<number> {
     }
   }
 
-async openPosition(symbol: string, quantity: number, side: 'SHORT', signalType: string): Promise<{success: boolean, positionId?: string, realPositionId?: string}> {
-  if (!this.validSymbolsCache.has(symbol)) {
-    console.log(`🚫 [INVALID_SYMBOL_ORDER] ${symbol} - Không thể vào lệnh do symbol không hợp lệ`);
-    return {success: false};
-  }
+  async openPosition(symbol: string, quantity: number, side: 'SHORT', signalType: string): Promise<{success: boolean, positionId?: string, realPositionId?: string}> {
+    if (!this.validSymbolsCache.has(symbol)) {
+      console.log(`🚫 [INVALID_SYMBOL_ORDER] ${symbol} - Không thể vào lệnh do symbol không hợp lệ`);
+      return {success: false};
+    }
 
-  try {
-    const contractInfo = await this.getContractInfo(symbol);
-    const currentPrice = await this.getCurrentPrice(symbol);
-    
-    if (currentPrice <= 0) return {success: false};
-    
-    let openQty = this.roundVolume(quantity, contractInfo.volumePrecision);
-    
-    if (openQty <= 0) return {success: false};
+    try {
+      const contractInfo = await this.getContractInfo(symbol);
+      const currentPrice = await this.getCurrentPrice(symbol);
+      
+      if (currentPrice <= 0) return {success: false};
+      
+      let openQty = this.roundVolume(quantity, contractInfo.volumePrecision);
+      
+      if (openQty <= 0) return {success: false};
 
-    const formattedSymbol = symbol.replace('USDT', '_USDT');
-    const orderSide = 3;
+      const formattedSymbol = symbol.replace('USDT', '_USDT');
+      const orderSide = 3;
 
-    const orderResponse = await client.submitOrder({
-      symbol: formattedSymbol,
-      price: currentPrice,
-      vol: openQty,
-      side: orderSide,
-      type: 5,
-      openType: 2,
-      leverage: LEVERAGE,
-      positionId: 0,
-    }) as any;
+      const orderResponse = await client.submitOrder({
+        symbol: formattedSymbol,
+        price: currentPrice,
+        vol: openQty,
+        side: orderSide,
+        type: 5,
+        openType: 2,
+        leverage: LEVERAGE,
+        positionId: 0,
+      }) as any;
 
-    // Ép kiểu response
-    const responseData = orderResponse as MexcOrderResponse;
-    
-    let orderId: string;
-    let realPositionId: string | undefined;
+      let orderId: string;
+      let realPositionId: string | undefined;
 
-    if (responseData && responseData.code === 0 && responseData.data) {
-      if (typeof responseData.data === 'string') {
-        orderId = responseData.data;
+      if (orderResponse && orderResponse.data) {
+        if (typeof orderResponse.data === 'string') {
+          orderId = orderResponse.data;
+          try {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            const positions = await this.getCurrentPositions();
+            const position = positions.find((p: any) => 
+              p.symbol === formattedSymbol && p.positionType === 2
+            );
+            if (position) {
+              realPositionId = position.id?.toString() || position.positionId?.toString();
+            }
+          } catch (error) {
+          }
+        } else if (typeof orderResponse.data === 'object') {
+          orderId = orderResponse.data.orderId?.toString() || `order_${Date.now()}`;
+          realPositionId = orderResponse.data.positionId?.toString() || 
+                          orderResponse.data.data?.positionId?.toString();
+        } else {
+          orderId = `order_${Date.now()}`;
+        }
+      } else {
+        orderId = `order_${Date.now()}`;
+      }
+
+      if (!realPositionId) {
         try {
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          await new Promise(resolve => setTimeout(resolve, 3000));
           const positions = await this.getCurrentPositions();
           const position = positions.find((p: any) => 
             p.symbol === formattedSymbol && p.positionType === 2
@@ -2433,46 +2268,21 @@ async openPosition(symbol: string, quantity: number, side: 'SHORT', signalType: 
             realPositionId = position.id?.toString() || position.positionId?.toString();
           }
         } catch (error) {
-          console.error('❌ [POSITION_ID_ERROR] Lỗi khi lấy position ID:', error);
         }
-      } else if (typeof responseData.data === 'object') {
-        orderId = responseData.data.orderId?.toString() || `order_${Date.now()}`;
-        realPositionId = responseData.data.positionId?.toString();
-      } else {
-        orderId = `order_${Date.now()}`;
       }
-    } else {
-      orderId = `order_${Date.now()}`;
+
+      const positionId = this.orderManager.generatePositionId();
+      
+      this.totalOrders++;
+      
+      this.startRealTimeMonitoring(symbol, positionId);
+      
+      return {success: true, positionId, realPositionId};
+
+    } catch (err: any) {
+      return {success: false};
     }
-
-    if (!realPositionId) {
-      try {
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        const positions = await this.getCurrentPositions();
-        const position = positions.find((p: any) => 
-          p.symbol === formattedSymbol && p.positionType === 2
-        );
-        if (position) {
-          realPositionId = position.id?.toString() || position.positionId?.toString();
-        }
-      } catch (error) {
-        console.error('❌ [POSITION_ID_ERROR] Lỗi khi lấy position ID lần 2:', error);
-      }
-    }
-
-    const positionId = this.orderManager.generatePositionId();
-    
-    this.totalOrders++;
-    
-    this.startRealTimeMonitoring(symbol, positionId);
-    
-    return {success: true, positionId, realPositionId};
-
-  } catch (err: any) {
-    console.error(`❌ [OPEN_POSITION_ERROR] Lỗi khi mở vị thế ${symbol}:`, err.message);
-    return {success: false};
   }
-}
 
   async closePosition(symbol: string, quantity: number, side: 'SHORT', reason: string, positionId?: string): Promise<boolean> {
     try {
@@ -2585,23 +2395,20 @@ async openPosition(symbol: string, quantity: number, side: 'SHORT', signalType: 
     }
   }
 
-private async getCurrentPositions(symbol?: string): Promise<any[]> {
-  try {
-    const formattedSymbol = symbol ? symbol.replace('USDT', '_USDT') : undefined;
-    
-    const response = await client.getOpenPositions(formattedSymbol) as any;
-    // Ép kiểu response
-    const positionsResponse = response as MexcOpenPositions;
-    
-    if (positionsResponse && positionsResponse.code === 0 && Array.isArray(positionsResponse.data)) {
-      return positionsResponse.data;
+  private async getCurrentPositions(symbol?: string): Promise<any[]> {
+    try {
+      const formattedSymbol = symbol ? symbol.replace('USDT', '_USDT') : undefined;
+      
+      const response = await client.getOpenPositions(formattedSymbol) as any;
+      
+      if (response && response.data && Array.isArray(response.data)) {
+        return response.data;
+      }
+      return [];
+    } catch (error: any) {
+      return [];
     }
-    return [];
-  } catch (error: any) {
-    console.error('❌ [POSITIONS_ERROR] Lỗi khi lấy vị thế:', error.message);
-    return [];
   }
-}
 
   private async getPositionForSymbol(symbol: string): Promise<any> {
     try {
@@ -3597,7 +3404,6 @@ private async getCurrentPositions(symbol?: string): Promise<any[]> {
     console.log(`\n📊 STATUS: Balance: $${this.accountBalance.toFixed(2)} | Positions: ${this.positions.size}/${STRATEGY_CONFIG.maxActivePositions} | PnL: $${this.totalProfit.toFixed(2)}`);
     console.log(`   Tracking: Pump: ${this.pumpTrackingCoins.size} | General: ${this.trackingCoins.size}`);
     console.log(`   Valid Symbols: ${this.validSymbolsCache.size} | Invalid Symbols: ${this.invalidSymbolsCache.size}`);
-    console.log(`   💸 Auto Transfer: $${this.totalTransferred} transferred | Next check: 20s`);
     console.log(`   🎯 Volume Max: 6M | TP: 50% tại +${STRATEGY_CONFIG.riskManagement.takeProfitPercent}% + 50% theo trend`);
     console.log(`   🚫 SL: KHÔNG CÓ HOÀN TOÀN - GỒNG ĐẾN CHÁY`);
     console.log(`   ⚠️  SL CỨNG: -${Math.abs(STRATEGY_CONFIG.riskManagement.slAfterMaxDca)}% sau max DCA`);
@@ -3675,7 +3481,6 @@ private async getCurrentPositions(symbol?: string): Promise<any[]> {
     console.log('🎯 TP: 50% tại +5% | 50% theo trend');
     console.log('⚠️  SL CỨNG: -80% sau khi max DCA');
     console.log('📈 XU HƯỚNG: EMA200 (4H + 1H)');
-    console.log('💸 TỰ ĐỘNG CHUYỂN TIỀN: 20s kiểm tra 1 lần, chuyển $50 khi futures < $10');
 
     console.log('\n🔍 [SYMBOL_VALIDATION] Đang kiểm tra symbol hợp lệ...');
     await this.validateAllSymbols();
@@ -3693,15 +3498,6 @@ private async getCurrentPositions(symbol?: string): Promise<any[]> {
     console.log(`💰 [BALANCE] Initial Balance: $${this.initialBalance.toFixed(2)}\n`);
     
     this.isRunning = true;
-
-    // INTERVAL KIỂM TRA VÀ CHUYỂN TIỀN 20 GIÂY 1 LẦN
-    const transferInterval = setInterval(async () => {
-      if (!this.isRunning) {
-        clearInterval(transferInterval);
-        return;
-      }
-      await this.checkAndTransferFunds();
-    }, STRATEGY_CONFIG.autoTransfer.checkInterval);
 
     const positionIdUpdateInterval = setInterval(async () => {
       if (!this.isRunning) {
@@ -3759,7 +3555,7 @@ private async getCurrentPositions(symbol?: string): Promise<any[]> {
       this.realTimeMonitorInterval = null;
     }
     
-    console.log(`\n🛑 Bot stopped | Orders: ${this.totalOrders} | PnL: $${this.totalProfit.toFixed(2)} | Transferred: $${this.totalTransferred}`);
+    console.log(`\n🛑 Bot stopped | Orders: ${this.totalOrders} | PnL: $${this.totalProfit.toFixed(2)}`);
   }
 }
 
