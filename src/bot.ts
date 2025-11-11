@@ -5,7 +5,7 @@ import axios from "axios";
 dotenv.config();
 
 const WEB_TOKEN = process.env.MEXC_AUTH_TOKEN ?? "";
-const LEVERAGE = 20;
+const LEVERAGE = 21;
 
 const client = new MexcFuturesClient({
   authToken: WEB_TOKEN,
@@ -48,9 +48,43 @@ interface Order {
   status: 'OPEN' | 'FILLED' | 'CANCELED' | 'REJECTED';
   createdAt: Date;
 }
+interface MexcSpotBalance {
+  code: number;
+  data: {
+    balances: Array<{
+      asset: string;
+      free: string;
+      locked: string;
+    }>;
+  };
+}
 
+interface MexcTransferResponse {
+  code: number;
+  msg?: string;
+  data?: any;
+}
+
+interface MexcAccountAsset {
+  code: number;
+  data: {
+    availableBalance: number;
+    [key: string]: any;
+  };
+}
+
+interface MexcOpenPositions {
+  code: number;
+  data: any[];
+}
+
+interface MexcOrderResponse {
+  code: number;
+  data: string | { orderId: string; positionId?: string };
+  msg?: string;
+}
 const STRATEGY_CONFIG = {
-  initialPositionPercent: 0.02,
+  initialPositionPercent: 0.05,
   maxTotalPositionPercent: 0.28,
   max24hChangePercent: 30,
   maxVolume24h: 6000000,
@@ -59,7 +93,7 @@ const STRATEGY_CONFIG = {
   targetLowVolumeCoins: 500,
   fakePumpMinPercent: 10,
   volumeSpikeThreshold: 2.5,
-  maxActivePositions: 7,
+  maxActivePositions: 3,
   maxTrackingCoins: 8,
   minAccountBalancePercent: 0.1,
   emaPeriod: 21,
@@ -79,8 +113,8 @@ const STRATEGY_CONFIG = {
   
   pumpStrategy: {
     minRetracePercent: 3, 
-    maxDcaCount: 20,
-    dcaPercent: 0.02,
+    maxDcaCount: 12,
+    dcaPercent: 0.05,
     maxTotalDcaPercent: 0.6,
     negativeDcaThreshold: -50,
   },
@@ -111,9 +145,9 @@ const STRATEGY_CONFIG = {
     // Phần trăm vốn sử dụng cho mỗi lần DCA
     dcaPercent: 0.05,
     // Số lần DCA tối đa theo chiến lược mới
-    maxDcaCount: 20,
+    maxDcaCount: 5,
     // Tổng phần trăm vốn tối đa cho DCA mới
-    maxTotalDcaPercent: 0.02,
+    maxTotalDcaPercent: 0.25,
     // Khoảng cách tối thiểu giữa các lần DCA (ms)
     minDcaInterval: 180000,
     // Biến động giá tối thiểu để DCA (%)
@@ -512,52 +546,58 @@ class FakePumpStrategyBot {
           }
         });
       });
-      
-      if (response.data && response.data.data) {
-        const balances = response.data.data.balances || [];
-        const usdtBalance = balances.find((b: any) => b.asset === 'USDT');
-        return parseFloat(usdtBalance?.free || 0);
+      const data = response.data as MexcSpotBalance;
+     if (data && data.code === 200 && data.data) {
+          const balances = data.data.balances || [];
+          const usdtBalance = balances.find((b: any) => b.asset === 'USDT');
+          return parseFloat(usdtBalance?.free || '0');
+        }
+        return 0;
+      } catch (error: any) {
+        console.error('❌ [SPOT_BALANCE_ERROR] Lỗi khi lấy số dư spot:', error.message);
+        return 0;
       }
-      return 0;
-    } catch (error: any) {
-      console.error('❌ [SPOT_BALANCE_ERROR] Lỗi khi lấy số dư spot:', error.message);
-      return 0;
-    }
   }
 
   // HÀM MỚI: CHUYỂN TIỀN TỪ SPOT SANG FUTURES
-  private async transferSpotToFutures(amount: number): Promise<boolean> {
-    try {
-      console.log(`🔄 [TRANSFER] Đang chuyển $${amount} từ spot sang futures...`);
-      
-      // Sử dụng API chuyển tiền của MEXC
-      const response = await withRetry(async () => {
-        return await axios.post("https://www.mexc.com/open/api/v2/transfer", {
+private async transferSpotToFutures(amount: number): Promise<boolean> {
+  try {
+    console.log(`🔄 [TRANSFER] Đang chuyển $${amount} từ spot sang futures...`);
+    
+    const response = await withRetry(async () => {
+      return await axios.post<MexcTransferResponse>(
+        "https://www.mexc.com/open/api/v2/transfer",
+        {
           from: 'SPOT',
-          to: 'FUTURES',
+          to: 'FUTURES', 
           asset: 'USDT',
           amount: amount
-        }, {
+        },
+        {
           headers: {
             'ApiKey': WEB_TOKEN,
             'Content-Type': 'application/json'
           }
-        });
-      });
-      
-      if (response.data && response.data.code === 0) {
-        console.log(`✅ [TRANSFER_SUCCESS] Đã chuyển $${amount} từ spot sang futures`);
-        this.totalTransferred += amount;
-        return true;
-      } else {
-        console.log(`❌ [TRANSFER_FAILED] Không thể chuyển tiền:`, response.data?.msg || 'Unknown error');
-        return false;
-      }
-    } catch (error: any) {
-      console.error('❌ [TRANSFER_ERROR] Lỗi khi chuyển tiền:', error.message);
+        }
+      );
+    });
+    
+    // Ép kiểu response data
+    const data = response.data as MexcTransferResponse;
+    
+    if (data && data.code === 0) {
+      console.log(`✅ [TRANSFER_SUCCESS] Đã chuyển $${amount} từ spot sang futures`);
+      this.totalTransferred += amount;
+      return true;
+    } else {
+      console.log(`❌ [TRANSFER_FAILED] Không thể chuyển tiền:`, data?.msg || 'Unknown error');
       return false;
     }
+  } catch (error: any) {
+    console.error('❌ [TRANSFER_ERROR] Lỗi khi chuyển tiền:', error.message);
+    return false;
   }
+}
 
   // HÀM MỚI: KIỂM TRA VÀ TỰ ĐỘNG CHUYỂN TIỀN
   private async checkAndTransferFunds(): Promise<void> {
@@ -619,39 +659,40 @@ class FakePumpStrategyBot {
   }
 
   // Batch API methods
-  private async updateAllTickersCache(): Promise<void> {
-    const now = Date.now();
-    if (now - this.lastAllTickersUpdate < this.ALL_TICKERS_CACHE_TTL) {
-      return;
-    }
+private async updateAllTickersCache(): Promise<void> {
+  const now = Date.now();
+  if (now - this.lastAllTickersUpdate < this.ALL_TICKERS_CACHE_TTL) {
+    return;
+  }
 
-    try {
-      const response = await withRetry(async () => {
-        return await axios.get("https://futures.mexc.co/api/v1/contract/ticker");
+  try {
+    const response = await withRetry(async () => {
+      return await axios.get<MexcResponse<TickerDataResponse[]>>("https://futures.mexc.co/api/v1/contract/ticker");
+    });
+    
+    // Ép kiểu data
+    const data = response.data as MexcResponse<TickerDataResponse[]>;
+    
+    if (data && data.code === 0 && Array.isArray(data.data)) {
+      this.allTickersCache.clear();
+      
+      data.data.forEach((ticker: TickerDataResponse) => {
+        const symbol = ticker.symbol.replace('_USDT', 'USDT');
+        this.allTickersCache.set(symbol, {
+          symbol,
+          lastPrice: parseFloat(ticker.lastPrice) || 0,
+          change24h: parseFloat(ticker.rose) * 100 || 0,
+          amount24: parseFloat(ticker.amount24) || 0
+        });
       });
       
-      const data = response.data as MexcResponse<TickerDataResponse[]>;
-      
-      if (data && data.code === 0 && Array.isArray(data.data)) {
-        this.allTickersCache.clear();
-        
-        data.data.forEach((ticker: TickerDataResponse) => {
-          const symbol = ticker.symbol.replace('_USDT', 'USDT');
-          this.allTickersCache.set(symbol, {
-            symbol,
-            lastPrice: parseFloat(ticker.lastPrice) || 0,
-            change24h: parseFloat(ticker.rose) * 100 || 0,
-            amount24: parseFloat(ticker.amount24) || 0
-          });
-        });
-        
-        this.lastAllTickersUpdate = now;
-        console.log(`✅ [BATCH_TICKERS] Đã cập nhật ${this.allTickersCache.size} tickers`);
-      }
-    } catch (error: any) {
-      console.error('❌ [BATCH_TICKERS_ERROR] Lỗi khi lấy batch tickers:', error.message);
+      this.lastAllTickersUpdate = now;
+      console.log(`✅ [BATCH_TICKERS] Đã cập nhật ${this.allTickersCache.size} tickers`);
     }
+  } catch (error: any) {
+    console.error('❌ [BATCH_TICKERS_ERROR] Lỗi khi lấy batch tickers:', error.message);
   }
+}
 
   // Sửa phương thức getTicker24hData để dùng batch cache
   private async getTicker24hData(symbol: string): Promise<TickerData | null> {
@@ -671,43 +712,33 @@ class FakePumpStrategyBot {
   }
 
   // Thêm hàm getContractInfo bị thiếu
-  async getContractInfo(symbol: string): Promise<ContractInfo> {
-    // Kiểm tra symbol hợp lệ trước
-    if (!this.validSymbolsCache.has(symbol)) {
-      return this.getFallbackContractInfo(symbol, symbol.replace('USDT', '_USDT'));
-    }
+async getContractInfo(symbol: string): Promise<ContractInfo> {
+  // Kiểm tra symbol hợp lệ trước
+  if (!this.validSymbolsCache.has(symbol)) {
+    return this.getFallbackContractInfo(symbol, symbol.replace('USDT', '_USDT'));
+  }
 
-    const cacheKey = symbol.replace('USDT', '_USDT');
+  const cacheKey = symbol.replace('USDT', '_USDT');
+  
+  if (this.contractInfoCache.has(cacheKey)) {
+    return this.contractInfoCache.get(cacheKey)!;
+  }
+
+  try {
+    const response = await withRetry(async () => {
+      const result = await axios.get<MexcResponse<any[]>>("https://futures.mexc.co/api/v1/contract/detail");
+      return result;
+    });
     
-    if (this.contractInfoCache.has(cacheKey)) {
-      return this.contractInfoCache.get(cacheKey)!;
-    }
-
-    try {
-      const response = await withRetry(async () => {
-        const result = await axios.get<any>("https://futures.mexc.co/api/v1/contract/detail");
-        return result;
-      });
+    // Ép kiểu data
+    const data = response.data as MexcResponse<any[]>;
+    let contractInfo: ContractInfo;
+    
+    if (data && data.code === 0 && Array.isArray(data.data)) {
+      const contracts = data.data;
+      const info = contracts.find((c: any) => c.symbol === cacheKey);
       
-      const data = response.data;
-      let contractInfo: ContractInfo;
-      
-      if (Array.isArray(data.data)) {
-        const contracts = data.data;
-        const info = contracts.find((c: any) => c.symbol === cacheKey);
-        
-        if (info) {
-          contractInfo = {
-            symbol: cacheKey,
-            contractSize: info.contractSize || 1,
-            pricePrecision: info.priceScale || 5,
-            volumePrecision: info.volScale || 0
-          };
-        } else {
-          contractInfo = this.getFallbackContractInfo(symbol, cacheKey);
-        }
-      } else if (data.data && typeof data.data === 'object') {
-        const info = data.data as any;
+      if (info) {
         contractInfo = {
           symbol: cacheKey,
           contractSize: info.contractSize || 1,
@@ -717,14 +748,26 @@ class FakePumpStrategyBot {
       } else {
         contractInfo = this.getFallbackContractInfo(symbol, cacheKey);
       }
-
-      this.contractInfoCache.set(cacheKey, contractInfo);
-      return contractInfo;
-
-    } catch (error: any) {
-      return this.getFallbackContractInfo(symbol, cacheKey);
+    } else if (data && data.code === 0 && data.data && typeof data.data === 'object') {
+      const info = data.data as any;
+      contractInfo = {
+        symbol: cacheKey,
+        contractSize: info.contractSize || 1,
+        pricePrecision: info.priceScale || 5,
+        volumePrecision: info.volScale || 0
+      };
+    } else {
+      contractInfo = this.getFallbackContractInfo(symbol, cacheKey);
     }
+
+    this.contractInfoCache.set(cacheKey, contractInfo);
+    return contractInfo;
+
+  } catch (error: any) {
+    console.error(`❌ [CONTRACT_INFO_ERROR] Lỗi khi lấy thông tin contract ${symbol}:`, error.message);
+    return this.getFallbackContractInfo(symbol, cacheKey);
   }
+}
 
   private getFallbackContractInfo(symbol: string, cacheKey: string): ContractInfo {
     let contractSize = 1;
@@ -809,7 +852,7 @@ class FakePumpStrategyBot {
         console.error('❌ [VALIDATE_SYMBOLS_ERROR] Lỗi khi kiểm tra symbol:', error);
     }
   }
-
+  
   private async analyzeLongTermTrend(symbol: string): Promise<TrendAnalysis> {
     const cacheKey = symbol;
     const cached = this.trendAnalysisCache.get(cacheKey);
@@ -1935,15 +1978,21 @@ class FakePumpStrategyBot {
     };
   }
 
-  async getUSDTBalance(): Promise<number> {
-    try {
-      const usdtAsset = await client.getAccountAsset('USDT') as any;
-      return usdtAsset.data.availableBalance;
-    } catch (e: any) {
-      return 0;
+async getUSDTBalance(): Promise<number> {
+  try {
+    const usdtAsset = await client.getAccountAsset('USDT') as any;
+    // Ép kiểu response
+    const response = usdtAsset as MexcAccountAsset;
+    
+    if (response && response.code === 0 && response.data) {
+      return response.data.availableBalance || 0;
     }
+    return 0;
+  } catch (e: any) {
+    console.error('❌ [BALANCE_ERROR] Lỗi khi lấy số dư:', e.message);
+    return 0;
   }
-
+}
   private async calculatePositionSize(symbol: string, percent: number, confidence: number = 50): Promise<number> {
     try {
       const currentPrice = await this.getCurrentPrice(symbol);
@@ -2335,67 +2384,47 @@ class FakePumpStrategyBot {
     }
   }
 
-  async openPosition(symbol: string, quantity: number, side: 'SHORT', signalType: string): Promise<{success: boolean, positionId?: string, realPositionId?: string}> {
-    if (!this.validSymbolsCache.has(symbol)) {
-      console.log(`🚫 [INVALID_SYMBOL_ORDER] ${symbol} - Không thể vào lệnh do symbol không hợp lệ`);
-      return {success: false};
-    }
+async openPosition(symbol: string, quantity: number, side: 'SHORT', signalType: string): Promise<{success: boolean, positionId?: string, realPositionId?: string}> {
+  if (!this.validSymbolsCache.has(symbol)) {
+    console.log(`🚫 [INVALID_SYMBOL_ORDER] ${symbol} - Không thể vào lệnh do symbol không hợp lệ`);
+    return {success: false};
+  }
 
-    try {
-      const contractInfo = await this.getContractInfo(symbol);
-      const currentPrice = await this.getCurrentPrice(symbol);
-      
-      if (currentPrice <= 0) return {success: false};
-      
-      let openQty = this.roundVolume(quantity, contractInfo.volumePrecision);
-      
-      if (openQty <= 0) return {success: false};
+  try {
+    const contractInfo = await this.getContractInfo(symbol);
+    const currentPrice = await this.getCurrentPrice(symbol);
+    
+    if (currentPrice <= 0) return {success: false};
+    
+    let openQty = this.roundVolume(quantity, contractInfo.volumePrecision);
+    
+    if (openQty <= 0) return {success: false};
 
-      const formattedSymbol = symbol.replace('USDT', '_USDT');
-      const orderSide = 3;
+    const formattedSymbol = symbol.replace('USDT', '_USDT');
+    const orderSide = 3;
 
-      const orderResponse = await client.submitOrder({
-        symbol: formattedSymbol,
-        price: currentPrice,
-        vol: openQty,
-        side: orderSide,
-        type: 5,
-        openType: 2,
-        leverage: LEVERAGE,
-        positionId: 0,
-      }) as any;
+    const orderResponse = await client.submitOrder({
+      symbol: formattedSymbol,
+      price: currentPrice,
+      vol: openQty,
+      side: orderSide,
+      type: 5,
+      openType: 2,
+      leverage: LEVERAGE,
+      positionId: 0,
+    }) as any;
 
-      let orderId: string;
-      let realPositionId: string | undefined;
+    // Ép kiểu response
+    const responseData = orderResponse as MexcOrderResponse;
+    
+    let orderId: string;
+    let realPositionId: string | undefined;
 
-      if (orderResponse && orderResponse.data) {
-        if (typeof orderResponse.data === 'string') {
-          orderId = orderResponse.data;
-          try {
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            const positions = await this.getCurrentPositions();
-            const position = positions.find((p: any) => 
-              p.symbol === formattedSymbol && p.positionType === 2
-            );
-            if (position) {
-              realPositionId = position.id?.toString() || position.positionId?.toString();
-            }
-          } catch (error) {
-          }
-        } else if (typeof orderResponse.data === 'object') {
-          orderId = orderResponse.data.orderId?.toString() || `order_${Date.now()}`;
-          realPositionId = orderResponse.data.positionId?.toString() || 
-                          orderResponse.data.data?.positionId?.toString();
-        } else {
-          orderId = `order_${Date.now()}`;
-        }
-      } else {
-        orderId = `order_${Date.now()}`;
-      }
-
-      if (!realPositionId) {
+    if (responseData && responseData.code === 0 && responseData.data) {
+      if (typeof responseData.data === 'string') {
+        orderId = responseData.data;
         try {
-          await new Promise(resolve => setTimeout(resolve, 3000));
+          await new Promise(resolve => setTimeout(resolve, 2000));
           const positions = await this.getCurrentPositions();
           const position = positions.find((p: any) => 
             p.symbol === formattedSymbol && p.positionType === 2
@@ -2404,21 +2433,46 @@ class FakePumpStrategyBot {
             realPositionId = position.id?.toString() || position.positionId?.toString();
           }
         } catch (error) {
+          console.error('❌ [POSITION_ID_ERROR] Lỗi khi lấy position ID:', error);
         }
+      } else if (typeof responseData.data === 'object') {
+        orderId = responseData.data.orderId?.toString() || `order_${Date.now()}`;
+        realPositionId = responseData.data.positionId?.toString();
+      } else {
+        orderId = `order_${Date.now()}`;
       }
-
-      const positionId = this.orderManager.generatePositionId();
-      
-      this.totalOrders++;
-      
-      this.startRealTimeMonitoring(symbol, positionId);
-      
-      return {success: true, positionId, realPositionId};
-
-    } catch (err: any) {
-      return {success: false};
+    } else {
+      orderId = `order_${Date.now()}`;
     }
+
+    if (!realPositionId) {
+      try {
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        const positions = await this.getCurrentPositions();
+        const position = positions.find((p: any) => 
+          p.symbol === formattedSymbol && p.positionType === 2
+        );
+        if (position) {
+          realPositionId = position.id?.toString() || position.positionId?.toString();
+        }
+      } catch (error) {
+        console.error('❌ [POSITION_ID_ERROR] Lỗi khi lấy position ID lần 2:', error);
+      }
+    }
+
+    const positionId = this.orderManager.generatePositionId();
+    
+    this.totalOrders++;
+    
+    this.startRealTimeMonitoring(symbol, positionId);
+    
+    return {success: true, positionId, realPositionId};
+
+  } catch (err: any) {
+    console.error(`❌ [OPEN_POSITION_ERROR] Lỗi khi mở vị thế ${symbol}:`, err.message);
+    return {success: false};
   }
+}
 
   async closePosition(symbol: string, quantity: number, side: 'SHORT', reason: string, positionId?: string): Promise<boolean> {
     try {
@@ -2531,20 +2585,23 @@ class FakePumpStrategyBot {
     }
   }
 
-  private async getCurrentPositions(symbol?: string): Promise<any[]> {
-    try {
-      const formattedSymbol = symbol ? symbol.replace('USDT', '_USDT') : undefined;
-      
-      const response = await client.getOpenPositions(formattedSymbol) as any;
-      
-      if (response && response.data && Array.isArray(response.data)) {
-        return response.data;
-      }
-      return [];
-    } catch (error: any) {
-      return [];
+private async getCurrentPositions(symbol?: string): Promise<any[]> {
+  try {
+    const formattedSymbol = symbol ? symbol.replace('USDT', '_USDT') : undefined;
+    
+    const response = await client.getOpenPositions(formattedSymbol) as any;
+    // Ép kiểu response
+    const positionsResponse = response as MexcOpenPositions;
+    
+    if (positionsResponse && positionsResponse.code === 0 && Array.isArray(positionsResponse.data)) {
+      return positionsResponse.data;
     }
+    return [];
+  } catch (error: any) {
+    console.error('❌ [POSITIONS_ERROR] Lỗi khi lấy vị thế:', error.message);
+    return [];
   }
+}
 
   private async getPositionForSymbol(symbol: string): Promise<any> {
     try {
